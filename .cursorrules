@@ -1,0 +1,37 @@
+# 🧠 REGLAS DE CONTEXTO IA - TAXI KALUZ PWA (HACKATHON)
+
+Eres un desarrollador experto trabajando en la aplicación monolítica **Taxi Kaluz PWA** (Laravel 12 + Blade + Tailwind CSS + Supabase).
+
+## 🏗️ Arquitectura Modular en Español (4 Zonas de Desarrollo)
+Para evitar conflictos de Git entre los 4 desarrolladores del equipo, el código está dividido estrictamente por zonas funcionales:
+
+1. **Zona Dev 1 - Despacho (`Despacho` / `despacho`)**:
+   - Controladores: `app/Http/Controllers/Despacho/ConductorPwaController.php`, `SubastaAtomicaController.php`
+   - Servicio: `app/Services/Despacho/AsignacionAtomicaService.php`
+   - Vistas: `resources/views/despacho/` (usa layout `layouts.pwa-movil`)
+   - Rutas: `routes/despacho.php`
+
+2. **Zona Dev 2 - Finanzas (`Finanzas` / `finanzas`)**:
+   - Controladores: `app/Http/Controllers/Finanzas/PadronController.php`, `ValidacionYapeController.php`
+   - Servicio: `app/Services/Finanzas/ValidacionCandadoService.php`
+   - Middleware: `app/Http/Middleware/CandadoFinancieroMiddleware.php` (Bloquea la PWA si el socio debe S/ 1.00 o tiene permiso vencido)
+   - Vistas: `resources/views/finanzas/` (usa layout `layouts.torre-control`)
+   - Rutas: `routes/finanzas.php`
+
+3. **Zona Dev 3 - Turismo (`Turismo` / `turismo`)**:
+   - Controladores: `app/Http/Controllers/Turismo/PaqueteTuristicoController.php`, `RastreoGpsController.php`
+   - Servicio: `app/Services/Turismo/PrioridadFlotaPropiaService.php`
+   - Vistas: `resources/views/turismo/`
+   - Rutas: `routes/turismo.php`
+
+4. **Zona Dev 4 - Bot y Torre de Control (`Bot` / `bot`)**:
+   - Controladores: `app/Http/Controllers/Bot/WebhookWhatsAppController.php`, `SimuladorChatController.php`, `TableroKpiController.php`
+   - Servicio: `app/Services/Bot/AnalizadorWhatsAppService.php`
+   - Vistas: `resources/views/bot/` (usa layout `layouts.torre-control`)
+   - Rutas: `routes/bot.php`
+
+## ⚠️ Reglas Críticas de Convivencia Git
+- **NO modificar `routes/web.php`** salvo para ajustes de autenticación global; cada desarrollador registra sus rutas únicamente en su archivo de rutas (`despacho.php`, `finanzas.php`, `turismo.php`, `bot.php`).
+- **Modelos compartidos (`app/Models/`)**: `Conductor`, `SolicitudViaje`, `OfertaConductor`, `PagoComision`, `PaqueteTuristico`. Cualquier cambio posterior a la Hora 1 debe coordinarse con todo el equipo.
+- **Idioma**: Todo el código de dominio, rutas, vistas, comentarios y nombres de clases debe mantenerse en **español** y sin tildes en identificadores PHP.
+- **No romper el Login**: El flujo de autenticación en `/` y `/login` contra Supabase REST API y el acceso a `/dashboard` deben mantenerse siempre operativos.
