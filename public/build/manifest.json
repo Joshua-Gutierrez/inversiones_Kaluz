@@ -1,34 +1,98 @@
 {
-  "_fonts-C9MNnjVw.css": {
-    "file": "assets/fonts-C9MNnjVw.css",
-    "src": "_fonts-C9MNnjVw.css"
+  "_fonts-BGCnkPm_.css": {
+    "file": "assets/fonts-BGCnkPm_.css",
+    "src": "_fonts-BGCnkPm_.css"
   },
-  "_instrument-sans-400-normal-D1W7dsQl.woff": {
-    "file": "assets/instrument-sans-400-normal-D1W7dsQl.woff",
-    "src": "_instrument-sans-400-normal-D1W7dsQl.woff"
+  "_inter-300-normal-BVlfKGgI.woff2": {
+    "file": "assets/inter-300-normal-BVlfKGgI.woff2",
+    "src": "_inter-300-normal-BVlfKGgI.woff2"
   },
-  "_instrument-sans-400-normal-DRC__1Mx.woff2": {
-    "file": "assets/instrument-sans-400-normal-DRC__1Mx.woff2",
-    "src": "_instrument-sans-400-normal-DRC__1Mx.woff2"
+  "_inter-300-normal-i8F0SvXL.woff": {
+    "file": "assets/inter-300-normal-i8F0SvXL.woff",
+    "src": "_inter-300-normal-i8F0SvXL.woff"
   },
-  "_instrument-sans-500-normal-Dk9ku72i.woff2": {
-    "file": "assets/instrument-sans-500-normal-Dk9ku72i.woff2",
-    "src": "_instrument-sans-500-normal-Dk9ku72i.woff2"
+  "_inter-400-normal-C38fXH4l.woff2": {
+    "file": "assets/inter-400-normal-C38fXH4l.woff2",
+    "src": "_inter-400-normal-C38fXH4l.woff2"
   },
-  "_instrument-sans-500-normal-Z6ESRlEs.woff": {
-    "file": "assets/instrument-sans-500-normal-Z6ESRlEs.woff",
-    "src": "_instrument-sans-500-normal-Z6ESRlEs.woff"
+  "_inter-400-normal-CyCys3Eg.woff": {
+    "file": "assets/inter-400-normal-CyCys3Eg.woff",
+    "src": "_inter-400-normal-CyCys3Eg.woff"
   },
-  "_instrument-sans-600-normal-B7fBEWYG.woff2": {
-    "file": "assets/instrument-sans-600-normal-B7fBEWYG.woff2",
-    "src": "_instrument-sans-600-normal-B7fBEWYG.woff2"
+  "_inter-500-normal-BL9OpVg8.woff": {
+    "file": "assets/inter-500-normal-BL9OpVg8.woff",
+    "src": "_inter-500-normal-BL9OpVg8.woff"
   },
-  "_instrument-sans-600-normal-B9e8oLYv.woff": {
-    "file": "assets/instrument-sans-600-normal-B9e8oLYv.woff",
-    "src": "_instrument-sans-600-normal-B9e8oLYv.woff"
+  "_inter-500-normal-Cerq10X2.woff2": {
+    "file": "assets/inter-500-normal-Cerq10X2.woff2",
+    "src": "_inter-500-normal-Cerq10X2.woff2"
+  },
+  "_inter-600-normal-CiBQ2DWP.woff": {
+    "file": "assets/inter-600-normal-CiBQ2DWP.woff",
+    "src": "_inter-600-normal-CiBQ2DWP.woff"
+  },
+  "_inter-600-normal-LgqL8muc.woff2": {
+    "file": "assets/inter-600-normal-LgqL8muc.woff2",
+    "src": "_inter-600-normal-LgqL8muc.woff2"
+  },
+  "_inter-700-normal-BLAVimhd.woff": {
+    "file": "assets/inter-700-normal-BLAVimhd.woff",
+    "src": "_inter-700-normal-BLAVimhd.woff"
+  },
+  "_inter-700-normal-Yt3aPRUw.woff2": {
+    "file": "assets/inter-700-normal-Yt3aPRUw.woff2",
+    "src": "_inter-700-normal-Yt3aPRUw.woff2"
+  },
+  "_montserrat-400-normal-BLhwKU8k.woff2": {
+    "file": "assets/montserrat-400-normal-BLhwKU8k.woff2",
+    "src": "_montserrat-400-normal-BLhwKU8k.woff2"
+  },
+  "_montserrat-400-normal-xItZbAXg.woff": {
+    "file": "assets/montserrat-400-normal-xItZbAXg.woff",
+    "src": "_montserrat-400-normal-xItZbAXg.woff"
+  },
+  "_montserrat-500-normal-DRFEGfly.woff2": {
+    "file": "assets/montserrat-500-normal-DRFEGfly.woff2",
+    "src": "_montserrat-500-normal-DRFEGfly.woff2"
+  },
+  "_montserrat-500-normal-Dok2oTci.woff": {
+    "file": "assets/montserrat-500-normal-Dok2oTci.woff",
+    "src": "_montserrat-500-normal-Dok2oTci.woff"
+  },
+  "_montserrat-600-normal-CdhFl4lI.woff": {
+    "file": "assets/montserrat-600-normal-CdhFl4lI.woff",
+    "src": "_montserrat-600-normal-CdhFl4lI.woff"
+  },
+  "_montserrat-600-normal-UVxSCcoG.woff2": {
+    "file": "assets/montserrat-600-normal-UVxSCcoG.woff2",
+    "src": "_montserrat-600-normal-UVxSCcoG.woff2"
+  },
+  "_montserrat-700-normal-BWkrl476.woff": {
+    "file": "assets/montserrat-700-normal-BWkrl476.woff",
+    "src": "_montserrat-700-normal-BWkrl476.woff"
+  },
+  "_montserrat-700-normal-BdjcYUrC.woff2": {
+    "file": "assets/montserrat-700-normal-BdjcYUrC.woff2",
+    "src": "_montserrat-700-normal-BdjcYUrC.woff2"
+  },
+  "_montserrat-800-normal-C3dfDxXV.woff": {
+    "file": "assets/montserrat-800-normal-C3dfDxXV.woff",
+    "src": "_montserrat-800-normal-C3dfDxXV.woff"
+  },
+  "_montserrat-800-normal-axpkC1rd.woff2": {
+    "file": "assets/montserrat-800-normal-axpkC1rd.woff2",
+    "src": "_montserrat-800-normal-axpkC1rd.woff2"
+  },
+  "_montserrat-900-normal-B0TD3Qnu.woff2": {
+    "file": "assets/montserrat-900-normal-B0TD3Qnu.woff2",
+    "src": "_montserrat-900-normal-B0TD3Qnu.woff2"
+  },
+  "_montserrat-900-normal-BDWDmVut.woff": {
+    "file": "assets/montserrat-900-normal-BDWDmVut.woff",
+    "src": "_montserrat-900-normal-BDWDmVut.woff"
   },
   "resources/css/app.css": {
-    "file": "assets/app-DT9Ll0m3.css",
+    "file": "assets/app-Cs1cE_ld.css",
     "name": "app",
     "names": [
       "app.css"

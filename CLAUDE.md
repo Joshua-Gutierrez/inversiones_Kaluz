@@ -68,3 +68,27 @@ sistema/
 1. **No romper el Login existente**: Las rutas `/` y `POST /login` validan contra la tabla `usuarios` de Supabase y redirigen a `/dashboard`.
 2. **Cero conflictos Git**: Cada desarrollador trabaja exclusivamente en su carpeta de Controladores, Servicios, Vistas y su propio archivo en `routes/`.
 3. **Convención de nombres**: Nombres en español, sin caracteres especiales ni tildes en nombres de clases/archivos PHP (`SubastaAtomicaController`).
+
+## 🎨 Sistema de Diseño Oficial (Identidad Visual Kaluz)
+Toda la aplicación utiliza de manera obligatoria la siguiente paleta y tipografía:
+- **Primary**: `#08183D` (Azul Marino Profundo - Sidebar, botones primarios, títulos)
+- **Secondary**: `#E31B23` (Rojo Kaluz - Acciones destacadas, badges de candado, acentos)
+- **Tertiary**: `#081328` (Midnight Oscuro - Variantes invertidas, footer)
+- **Neutral**: `#64748B` (Slate Gris - Textos secundarios, bordes)
+- **Canvas / Fondo**: `#EAF0F8` (Gris azulado suave de fondo general)
+- **Tipografías**:
+  - `Headline`: **Montserrat** (`font-headline`, títulos, números de métricas)
+  - `Body`: **Inter** (`font-body`, párrafos, descripciones)
+  - `Label`: **Inter** (`font-label`, botones, inputs, badges)
+
+### 📁 Carpeta General de Componentes Reutilizables
+Todos los componentes compartidos residen en:
+- `resources/views/components/general/`:
+  - `<x-general.button variant="primary|secondary|inverted|outlined|accent" />`
+  - `<x-general.card title="" subtitle="" />`
+  - `<x-general.search placeholder="" />`
+  - `<x-general.badge variant="navy|red|neutral" />`
+  - `<x-general.icon-button variant="primary|accent|inverted" />`
+  - `<x-general.dock active="home|search|profile" />`
+- Catálogo y Showcase interactivo: `resources/views/general/index.blade.php` (Ruta `/general`).
+

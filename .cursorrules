@@ -35,3 +35,8 @@ Para evitar conflictos de Git entre los 4 desarrolladores del equipo, el código
 - **Modelos compartidos (`app/Models/`)**: `Conductor`, `SolicitudViaje`, `OfertaConductor`, `PagoComision`, `PaqueteTuristico`. Cualquier cambio posterior a la Hora 1 debe coordinarse con todo el equipo.
 - **Idioma**: Todo el código de dominio, rutas, vistas, comentarios y nombres de clases debe mantenerse en **español** y sin tildes en identificadores PHP.
 - **No romper el Login**: El flujo de autenticación en `/` y `/login` contra Supabase REST API y el acceso a `/dashboard` deben mantenerse siempre operativos.
+- **Sistema de Diseño Oficial**:
+  - Paleta: Primary `#08183D`, Secondary `#E31B23`, Tertiary `#081328`, Neutral `#64748B`, Canvas `#EAF0F8`.
+  - Tipografías: Headline = Montserrat, Body = Inter, Label = Inter.
+  - Componentes Compartidos: Carpeta `resources/views/components/general/` y catálogo en `/general`.
+

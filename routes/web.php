@@ -43,6 +43,10 @@ Route::get('/dashboard', function () {
     return view('dashboard');
 })->name('dashboard');
 
+Route::get('/general', function () {
+    return view('general.index');
+})->name('general.index');
+
 /*
 |--------------------------------------------------------------------------
 | Rutas Modulares por Desarrollador (Cero Conflictos Git)

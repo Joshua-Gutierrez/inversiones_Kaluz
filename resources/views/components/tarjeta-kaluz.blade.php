@@ -1,15 +1,15 @@
 @props(['titulo' => '', 'subtitulo' => null])
 
-<div {{ $attributes->merge(['class' => 'bg-white rounded-xl shadow-sm border border-slate-200 p-5']) }}>
+<div {{ $attributes->merge(['class' => 'bg-white rounded-2xl shadow-sm border border-slate-200/80 p-6 transition-all duration-200 hover:shadow-md']) }}>
     @if($titulo)
-        <div class="mb-3">
-            <h3 class="text-base font-bold text-slate-800">{{ $titulo }}</h3>
+        <div class="mb-4">
+            <h3 class="font-headline text-base font-bold text-[#08183D] tracking-tight">{{ $titulo }}</h3>
             @if($subtitulo)
-                <p class="text-xs text-slate-500">{{ $subtitulo }}</p>
+                <p class="font-body text-xs text-[#64748B] mt-0.5">{{ $subtitulo }}</p>
             @endif
         </div>
     @endif
-    <div>
+    <div class="font-body">
         {{ $slot }}
     </div>
 </div>
