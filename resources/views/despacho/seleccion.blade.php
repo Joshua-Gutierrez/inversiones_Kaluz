@@ -79,7 +79,11 @@
                     </li>
                 @empty
                     <li class="text-center text-sm text-slate-400 py-6">
-                        No hay conductores registrados aún.
+                        <p class="mb-3">No hay conductores registrados aún.</p>
+                        <a href="{{ route('despacho.demo.sembrar-conductores') }}"
+                           class="inline-block bg-[#0B1B3D] text-white font-bold rounded-xl px-4 py-2.5 text-xs shadow-sm">
+                            Sembrar 8 conductores de prueba
+                        </a>
                     </li>
                 @endforelse
             </ul>

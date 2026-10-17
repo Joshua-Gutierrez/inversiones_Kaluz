@@ -29,8 +29,8 @@ class AtomicAssignmentService
      * Transiciones válidas de estado del viaje (asignado → en_ruta → completado).
      */
     private const TRANSICIONES_VALIDAS = [
-        'asignado'  => ['en_ruta', 'cancelado'],
-        'en_ruta'   => ['completado', 'cancelado'],
+        'asignado' => ['en_ruta', 'cancelado'],
+        'en_ruta' => ['completado', 'cancelado'],
     ];
 
     /**
@@ -58,8 +58,7 @@ class AtomicAssignmentService
 
         $query = DB::table('solicitudes_viaje')
             ->whereIn('estado', ['pendiente', 'en_subasta'])
-            ->whereNull('conductor_id')
-            ->orderBy('created_at', 'asc');
+            ->whereNull('conductor_id');
 
         if (! $esFlotaPropia) {
             $query->where('tipo_servicio', '!=', 'turismo');
@@ -68,7 +67,7 @@ class AtomicAssignmentService
             $query->orderByRaw("CASE WHEN tipo_servicio = 'turismo' THEN 0 ELSE 1 END");
         }
 
-        return $query->get();
+        return $query->orderBy('created_at', 'asc')->get();
     }
 
     /**
@@ -113,8 +112,8 @@ class AtomicAssignmentService
                 ->update([
                     'conductor_id' => $conductorId,
                     'precio_final' => $precioCliente,
-                    'estado'       => 'asignado',
-                    'updated_at'   => now(),
+                    'estado' => 'asignado',
+                    'updated_at' => now(),
                 ]);
 
             if ($afectadas === 0) {
@@ -126,10 +125,11 @@ class AtomicAssignmentService
             }
 
             // Cerramos las contraofertas que quedaban abiertas de esta solicitud.
+            // (ofertas_conductores solo tiene created_at, sin updated_at.)
             DB::table('ofertas_conductores')
                 ->where('solicitud_id', $solicitudId)
                 ->where('estado', 'pendiente')
-                ->update(['estado' => 'rechazada', 'updated_at' => now()]);
+                ->update(['estado' => 'rechazada']);
 
             return [
                 'ok' => true,
@@ -185,34 +185,25 @@ class AtomicAssignmentService
                 ];
             }
 
-            $yaOfrecio = DB::table('ofertas_conductores')
+            // Un conductor = una oferta por solicitud (UNIQUE solicitud_id + conductor_id):
+            // upsert atómico en vez de duplicar.
+            DB::table('ofertas_conductores')->upsert(
+                [[
+                    'solicitud_id' => $solicitudId,
+                    'conductor_id' => $conductorId,
+                    'monto_contraoferta' => $monto,
+                    'tiempo_llegada_min' => $tiempoLlegadaMin,
+                    'estado' => 'pendiente',
+                    'created_at' => now(),
+                ]],
+                ['solicitud_id', 'conductor_id'],
+                ['monto_contraoferta', 'tiempo_llegada_min', 'estado']
+            );
+
+            $ofertaId = (int) DB::table('ofertas_conductores')
                 ->where('solicitud_id', $solicitudId)
                 ->where('conductor_id', $conductorId)
-                ->first();
-
-            if ($yaOfrecio) {
-                // Un conductor = una oferta por solicitud: actualiza en lugar de duplicar.
-                $ofertaId = (int) $yaOfrecio->id;
-
-                DB::table('ofertas_conductores')
-                    ->where('id', $ofertaId)
-                    ->update([
-                        'monto_contraoferta' => $monto,
-                        'tiempo_llegada_min' => $tiempoLlegadaMin,
-                        'estado'             => 'pendiente',
-                        'updated_at'         => now(),
-                    ]);
-            } else {
-                $ofertaId = DB::table('ofertas_conductores')->insertGetId([
-                    'solicitud_id'        => $solicitudId,
-                    'conductor_id'        => $conductorId,
-                    'monto_contraoferta'  => $monto,
-                    'tiempo_llegada_min'  => $tiempoLlegadaMin,
-                    'estado'              => 'pendiente',
-                    'created_at'          => now(),
-                    'updated_at'          => now(),
-                ]);
-            }
+                ->value('id');
 
             // La solicitud pasa a subasta solo si seguía pendiente y sin conductor.
             DB::table('solicitudes_viaje')
@@ -262,9 +253,9 @@ class AtomicAssignmentService
                 ];
             }
 
-            $solicitudId  = (int) $oferta->solicitud_id;
-            $conductorId  = (int) $oferta->conductor_id;
-            $precioFinal  = (float) $oferta->monto_contraoferta;
+            $solicitudId = (int) $oferta->solicitud_id;
+            $conductorId = (int) $oferta->conductor_id;
+            $precioFinal = (float) $oferta->monto_contraoferta;
 
             if (! $this->conductorHabilitado($conductorId)) {
                 return [
@@ -282,14 +273,14 @@ class AtomicAssignmentService
                 ->update([
                     'conductor_id' => $conductorId,
                     'precio_final' => $precioFinal,
-                    'estado'       => 'asignado',
-                    'updated_at'   => now(),
+                    'estado' => 'asignado',
+                    'updated_at' => now(),
                 ]);
 
             if ($afectadas === 0) {
                 DB::table('ofertas_conductores')
                     ->where('id', $ofertaId)
-                    ->update(['estado' => 'rechazada', 'updated_at' => now()]);
+                    ->update(['estado' => 'rechazada']);
 
                 return [
                     'ok' => false,
@@ -300,13 +291,13 @@ class AtomicAssignmentService
 
             DB::table('ofertas_conductores')
                 ->where('id', $ofertaId)
-                ->update(['estado' => 'aceptada', 'updated_at' => now()]);
+                ->update(['estado' => 'aceptada']);
 
             DB::table('ofertas_conductores')
                 ->where('solicitud_id', $solicitudId)
                 ->where('id', '!=', $ofertaId)
                 ->where('estado', 'pendiente')
-                ->update(['estado' => 'rechazada', 'updated_at' => now()]);
+                ->update(['estado' => 'rechazada']);
 
             return [
                 'ok' => true,
@@ -355,7 +346,7 @@ class AtomicAssignmentService
                 ->where('conductor_id', $conductorId)
                 ->where('estado', $viaje->estado)
                 ->update([
-                    'estado'     => $nuevoEstado,
+                    'estado' => $nuevoEstado,
                     'updated_at' => now(),
                 ]);
 

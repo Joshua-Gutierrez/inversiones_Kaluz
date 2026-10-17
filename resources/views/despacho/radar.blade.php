@@ -206,13 +206,18 @@
     function radarConductor(urlSolicitudes, csrfToken) {
         return {
             solicitudes: [],
-            viajeActivo: @json($viajeActivo ? [
-                'id' => $viajeActivo->id,
-                'origen_texto' => $viajeActivo->origen_texto,
-                'destino_texto' => $viajeActivo->destino_texto,
-                'precio_final' => $viajeActivo->precio_final,
-                'oferta_cliente' => $viajeActivo->oferta_cliente,
-            ] : null),
+            viajeActivo: {!! json_encode(
+                $viajeActivo
+                    ? [
+                        'id' => $viajeActivo->id,
+                        'origen_texto' => $viajeActivo->origen_texto,
+                        'destino_texto' => $viajeActivo->destino_texto,
+                        'precio_final' => $viajeActivo->precio_final,
+                        'oferta_cliente' => $viajeActivo->oferta_cliente,
+                    ]
+                    : null,
+                JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+            ) !!},
             enLinea: true,
             conectado: false,
             aviso: '',

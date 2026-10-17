@@ -26,6 +26,8 @@ Route::prefix('conductor')->name('despacho.')->group(function () {
     // --- Demo: crear solicitud de ejemplo sin depender del bot (Dev 4) ---
     Route::get('/demo/crear-solicitud', [ConductorPwaController::class, 'demoCrearSolicitud'])
         ->name('demo.crear-solicitud');
+    Route::get('/demo/sembrar-conductores', [ConductorPwaController::class, 'demoSembrarConductores'])
+        ->name('demo.sembrar-conductores');
 
     // --- Zona protegida por el candado financiero de Dev 2 ---
     Route::middleware(CandadoFinancieroMiddleware::class)->group(function () {

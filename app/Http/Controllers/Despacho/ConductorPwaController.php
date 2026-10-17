@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Despacho;
 
 use App\Http\Controllers\Controller;
+use App\Services\Despacho\AtomicAssignmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -39,8 +40,8 @@ class ConductorPwaController extends Controller
     public function entrar(Request $request): RedirectResponse
     {
         $datos = $request->validate([
-            'conductor_id'        => ['nullable', 'integer', 'exists:conductores,id'],
-            'telefono_whatsapp'   => ['nullable', 'string', 'max:20'],
+            'conductor_id' => ['nullable', 'integer', 'exists:conductores,id'],
+            'telefono_whatsapp' => ['nullable', 'string', 'max:20'],
         ], [], [
             'conductor_id' => 'conductor',
             'telefono_whatsapp' => 'teléfono',
@@ -87,6 +88,7 @@ class ConductorPwaController extends Controller
 
         if (! $conductor) {
             $request->session()->forget('conductor_id');
+
             return redirect()->route('despacho.seleccion');
         }
 
@@ -94,12 +96,12 @@ class ConductorPwaController extends Controller
             return redirect()->route('despacho.pwa.bloqueado');
         }
 
-        $viajeActivo = app(\App\Services\Despacho\AtomicAssignmentService::class)
+        $viajeActivo = app(AtomicAssignmentService::class)
             ->viajeActivoDe((int) $conductor->id);
 
         return view('despacho.radar', [
-            'conductor'    => $conductor,
-            'viajeActivo'  => $viajeActivo,
+            'conductor' => $conductor,
+            'viajeActivo' => $viajeActivo,
         ]);
     }
 
@@ -123,7 +125,7 @@ class ConductorPwaController extends Controller
             return redirect()->route('despacho.pwa.bloqueado');
         }
 
-        $viajeActivo = app(\App\Services\Despacho\AtomicAssignmentService::class)
+        $viajeActivo = app(AtomicAssignmentService::class)
             ->viajeActivoDe((int) $conductor->id);
 
         if (! $viajeActivo) {
@@ -131,7 +133,7 @@ class ConductorPwaController extends Controller
         }
 
         return view('despacho.viaje-activo', [
-            'conductor'   => $conductor,
+            'conductor' => $conductor,
             'viajeActivo' => $viajeActivo,
         ]);
     }
@@ -167,19 +169,169 @@ class ConductorPwaController extends Controller
     {
         DB::table('solicitudes_viaje')->insert([
             'cliente_telefono' => '+51999888777',
-            'cliente_nombre'   => 'María Quispe (demo)',
-            'origen_texto'     => 'Real Plaza Huancayo',
-            'destino_texto'    => 'El Tambo',
-            'tipo_servicio'    => 'urbano',
-            'precio_sugerido'  => 7.00,
-            'oferta_cliente'   => 6.00,
-            'precio_final'     => null,
-            'conductor_id'     => null,
-            'estado'           => 'pendiente',
-            'created_at'       => now(),
-            'updated_at'       => now(),
+            'cliente_nombre' => 'María Quispe (demo)',
+            'origen_texto' => 'Real Plaza Huancayo',
+            'destino_texto' => 'El Tambo',
+            'tipo_servicio' => 'urbano',
+            'precio_sugerido' => 7.00,
+            'oferta_cliente' => 6.00,
+            'precio_final' => null,
+            'conductor_id' => null,
+            'estado' => 'pendiente',
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         return back()->with('demo_ok', 'Solicitud de ejemplo creada: Real Plaza → El Tambo por S/ 6.00.');
+    }
+
+    /**
+     * GET /conductor/demo/sembrar-conductores - SOLO DEMO: si la tabla conductores está vacía,
+     * inserta los 8 conductores semilla de Huancayo (5 al día, 3 morosos) según CONTEXT.md.
+     */
+    public function demoSembrarConductores(): RedirectResponse
+    {
+        $ahora = now();
+
+        $semillas = [
+            [
+                'nombre' => 'Juan Carlos Quispe',
+                'dni' => '45892301',
+                'telefono_whatsapp' => '964111222',
+                'placa' => 'W2X-780',
+                'modelo_vehiculo' => 'Toyota HiAce Combi 2022',
+                'tipo_flota' => 'propia_combi',
+                'estado_comision' => 'al_dia',
+                'fecha_vencimiento_comision' => $ahora->copy()->addDays(15),
+                'fecha_vencimiento_permiso' => $ahora->copy()->addMonths(6)->toDateString(),
+                'habilitado' => true,
+                'lat_actual' => -12.0651,
+                'lng_actual' => -75.2049,
+                'created_at' => $ahora,
+                'updated_at' => $ahora,
+            ],
+            [
+                'nombre' => 'Luis Alberto Huamán',
+                'dni' => '41209873',
+                'telefono_whatsapp' => '964222333',
+                'placa' => 'W1A-456',
+                'modelo_vehiculo' => 'Toyota Yaris 2023',
+                'tipo_flota' => 'propia_auto',
+                'estado_comision' => 'al_dia',
+                'fecha_vencimiento_comision' => $ahora->copy()->addDays(20),
+                'fecha_vencimiento_permiso' => $ahora->copy()->addMonths(8)->toDateString(),
+                'habilitado' => true,
+                'lat_actual' => -12.0665,
+                'lng_actual' => -75.2035,
+                'created_at' => $ahora,
+                'updated_at' => $ahora,
+            ],
+            [
+                'nombre' => 'Carlos Mendoza Ramos',
+                'dni' => '47890123',
+                'telefono_whatsapp' => '964333444',
+                'placa' => 'AF-7821',
+                'modelo_vehiculo' => 'Nissan Versa 2021',
+                'tipo_flota' => 'afiliado',
+                'estado_comision' => 'al_dia',
+                'fecha_vencimiento_comision' => $ahora->copy()->addDays(7),
+                'fecha_vencimiento_permiso' => $ahora->copy()->addMonths(4)->toDateString(),
+                'habilitado' => true,
+                'lat_actual' => -12.0632,
+                'lng_actual' => -75.2078,
+                'created_at' => $ahora,
+                'updated_at' => $ahora,
+            ],
+            [
+                'nombre' => 'Marcos Soto Cárdenas',
+                'dni' => '43019284',
+                'telefono_whatsapp' => '964444555',
+                'placa' => 'W3C-912',
+                'modelo_vehiculo' => 'Kia Rio 2020',
+                'tipo_flota' => 'afiliado',
+                'estado_comision' => 'al_dia',
+                'fecha_vencimiento_comision' => $ahora->copy()->addDays(10),
+                'fecha_vencimiento_permiso' => $ahora->copy()->addMonths(5)->toDateString(),
+                'habilitado' => true,
+                'lat_actual' => -12.0680,
+                'lng_actual' => -75.2012,
+                'created_at' => $ahora,
+                'updated_at' => $ahora,
+            ],
+            [
+                'nombre' => 'Jorge David Rojas',
+                'dni' => '48192039',
+                'telefono_whatsapp' => '964555666',
+                'placa' => 'AF-4410',
+                'modelo_vehiculo' => 'Hyundai Accent 2019',
+                'tipo_flota' => 'afiliado',
+                'estado_comision' => 'al_dia',
+                'fecha_vencimiento_comision' => $ahora->copy()->addDays(3),
+                'fecha_vencimiento_permiso' => $ahora->copy()->addMonths(9)->toDateString(),
+                'habilitado' => true,
+                'lat_actual' => -12.0610,
+                'lng_actual' => -75.2090,
+                'created_at' => $ahora,
+                'updated_at' => $ahora,
+            ],
+            // 3 morosos (candado activado):
+            [
+                'nombre' => 'Pedro Pablo Flores (Debe S/ 1)',
+                'dni' => '42901823',
+                'telefono_whatsapp' => '964777888',
+                'placa' => 'W5E-201',
+                'modelo_vehiculo' => 'Chevrolet Sail 2018',
+                'tipo_flota' => 'afiliado',
+                'estado_comision' => 'moroso',
+                'fecha_vencimiento_comision' => $ahora->copy()->subDays(2),
+                'fecha_vencimiento_permiso' => $ahora->copy()->addMonths(3)->toDateString(),
+                'habilitado' => false,
+                'lat_actual' => -12.0651,
+                'lng_actual' => -75.2049,
+                'created_at' => $ahora,
+                'updated_at' => $ahora,
+            ],
+            [
+                'nombre' => 'Raúl Gómez Baldeón (Debe S/ 3)',
+                'dni' => '40918273',
+                'telefono_whatsapp' => '964888999',
+                'placa' => 'W2T-884',
+                'modelo_vehiculo' => 'Toyota Corolla 2017',
+                'tipo_flota' => 'afiliado',
+                'estado_comision' => 'moroso',
+                'fecha_vencimiento_comision' => $ahora->copy()->subDays(5),
+                'fecha_vencimiento_permiso' => $ahora->copy()->addMonths(2)->toDateString(),
+                'habilitado' => false,
+                'lat_actual' => -12.0651,
+                'lng_actual' => -75.2049,
+                'created_at' => $ahora,
+                'updated_at' => $ahora,
+            ],
+            [
+                'nombre' => 'Víctor Chávez Meza (SOAT vencido)',
+                'dni' => '46890124',
+                'telefono_whatsapp' => '964999000',
+                'placa' => 'AF-9011',
+                'modelo_vehiculo' => 'Nissan Sentra 2016',
+                'tipo_flota' => 'afiliado',
+                'estado_comision' => 'moroso',
+                'fecha_vencimiento_comision' => $ahora->copy()->subDays(1),
+                'fecha_vencimiento_permiso' => $ahora->copy()->subDays(10)->toDateString(),
+                'habilitado' => false,
+                'lat_actual' => -12.0651,
+                'lng_actual' => -75.2049,
+                'created_at' => $ahora,
+                'updated_at' => $ahora,
+            ],
+        ];
+
+        foreach ($semillas as $s) {
+            $existe = DB::table('conductores')->where('placa', $s['placa'])->exists();
+            if (! $existe) {
+                DB::table('conductores')->insert($s);
+            }
+        }
+
+        return back()->with('demo_ok', 'Semilla completada: 5 conductores al día y 3 morosos registrados.');
     }
 }
