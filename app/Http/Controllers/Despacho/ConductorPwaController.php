@@ -116,7 +116,7 @@ class ConductorPwaController extends Controller
 
         $conductor = DB::table('conductores')
             ->where('id', $conductorId)
-            ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'habilitado')
+            ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'habilitado', 'lat_actual', 'lng_actual')
             ->first();
 
         if (! $conductor || ! $conductor->habilitado) {
