@@ -22,7 +22,7 @@ class PrioridadFlotaPropiaService
                 $query->flotaPropia();
             }
 
-            return $query->orderByDesc('es_flota_propia')->get();
+            return $query->orderByRaw("CASE WHEN tipo_flota IN ('propia_combi', 'propia_auto') THEN 0 ELSE 1 END")->get();
         } catch (\Throwable $e) {
             return collect([]);
         }

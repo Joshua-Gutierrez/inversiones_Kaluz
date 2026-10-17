@@ -16,24 +16,24 @@ class Conductor extends Model
     protected $fillable = [
         'nombre',
         'dni',
-        'telefono',
+        'telefono_whatsapp',
         'placa',
         'modelo_vehiculo',
-        'tipo_vehiculo',
-        'es_flota_propia',
-        'deuda_comision',
+        'tipo_flota',
+        'estado_comision',
+        'fecha_vencimiento_comision',
         'fecha_vencimiento_permiso',
-        'estado',
-        'latitud_actual',
-        'longitud_actual',
+        'habilitado',
+        'lat_actual',
+        'lng_actual',
     ];
 
     protected $casts = [
-        'es_flota_propia' => 'boolean',
-        'deuda_comision' => 'decimal:2',
+        'habilitado' => 'boolean',
+        'fecha_vencimiento_comision' => 'datetime',
         'fecha_vencimiento_permiso' => 'date',
-        'latitud_actual' => 'float',
-        'longitud_actual' => 'float',
+        'lat_actual' => 'float',
+        'lng_actual' => 'float',
     ];
 
     /**
@@ -41,12 +41,11 @@ class Conductor extends Model
      */
     public function scopeHabilitados(Builder $query): Builder
     {
-        return $query->where('estado', 'activo')
-            ->where('deuda_comision', '<', 1.00)
-            ->where(function (Builder $q) {
-                $q->whereNull('fecha_vencimiento_permiso')
-                  ->orWhereDate('fecha_vencimiento_permiso', '>=', now()->toDateString());
-            });
+        return $query->where('habilitado', true)
+            ->where('estado_comision', 'al_dia')
+            ->whereNotNull('fecha_vencimiento_permiso')
+            ->whereDate('fecha_vencimiento_permiso', '>=', today()->toDateString())
+            ->where('fecha_vencimiento_comision', '>=', now());
     }
 
     /**
@@ -54,7 +53,29 @@ class Conductor extends Model
      */
     public function scopeFlotaPropia(Builder $query): Builder
     {
-        return $query->where('es_flota_propia', true);
+        return $query->whereIn('tipo_flota', ['propia_auto', 'propia_combi']);
+    }
+
+    public function getDeudaComisionAttribute(): float
+    {
+        $vencimiento = $this->fecha_vencimiento_comision;
+        if ($this->estado_comision === 'moroso' || ! $vencimiento || $vencimiento->isPast()) {
+            return $vencimiento && $vencimiento->isPast()
+                ? (float) max(1, (int) $vencimiento->copy()->startOfDay()->diffInDays(today()))
+                : 1.00;
+        }
+
+        return 0.00;
+    }
+
+    public function getTelefonoAttribute(): ?string
+    {
+        return $this->telefono_whatsapp;
+    }
+
+    public function getEsFlotaPropiaAttribute(): bool
+    {
+        return in_array($this->tipo_flota, ['propia_auto', 'propia_combi'], true);
     }
 
     public function ofertas(): HasMany

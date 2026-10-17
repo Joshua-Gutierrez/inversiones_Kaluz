@@ -12,5 +12,12 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('finanzas')->name('finanzas.')->group(function () {
     Route::get('/padron', [PadronController::class, 'index'])->name('padron');
-    Route::post('/yape/validar', [ValidacionYapeController::class, 'validarComprobante'])->name('yape.validar');
+    Route::post('/padron/conductores', [PadronController::class, 'store'])->name('padron.conductores.store');
+    Route::patch('/padron/conductores/{conductor}', [PadronController::class, 'actualizar'])
+        ->name('padron.conductores.actualizar');
+    Route::post('/yape/{pagoComision}/validar', [ValidacionYapeController::class, 'validarComprobante'])
+        ->name('yape.validar');
+    Route::post('/yape/{pagoComision}/rechazar', [ValidacionYapeController::class, 'rechazarComprobante'])
+        ->name('yape.rechazar');
+    Route::get('/padron/exportar', [PadronController::class, 'exportar'])->name('padron.exportar');
 });
