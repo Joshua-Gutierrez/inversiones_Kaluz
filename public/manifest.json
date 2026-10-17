@@ -1,0 +1,43 @@
+{
+    "name": "Taxi KALUZ Conductor",
+    "short_name": "KALUZ Chofer",
+    "description": "Radar de viajes para conductores de Taxi KALUZ en Huancayo. Acepta o contraoferta carreras en vivo.",
+    "start_url": "/conductor/radar",
+    "scope": "/conductor/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#0B1B3D",
+    "theme_color": "#0B1B3D",
+    "lang": "es-PE",
+    "categories": ["travel", "business"],
+    "icons": [
+        {
+            "src": "/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/icons/icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Radar de viajes",
+            "url": "/conductor/radar"
+        },
+        {
+            "name": "Viaje activo",
+            "url": "/conductor/viaje"
+        }
+    ]
+}
