@@ -52,7 +52,7 @@ class PaqueteTuristicoController extends Controller
             'created_at' => now(),
         ]);
 
-        return redirect()->away('/turismo')->with('exito', 'El plan turistico fue creado correctamente.');
+        return redirect()->route('turismo.index')->with('exito', 'El plan turistico fue creado correctamente.');
     }
 
     public function edit(int $id): View
@@ -71,7 +71,7 @@ class PaqueteTuristicoController extends Controller
 
         DB::table('paquetes_turisticos')->where('id', $id)->update($this->datosPaquete($request, $paquete->imagen_url));
 
-        return redirect()->away('/turismo')->with('exito', 'El plan turistico fue actualizado correctamente.');
+        return redirect()->route('turismo.index')->with('exito', 'El plan turistico fue actualizado correctamente.');
     }
 
     public function reservar(Request $request, PrioridadFlotaPropiaService $prioridadFlotaPropiaService): View|RedirectResponse
