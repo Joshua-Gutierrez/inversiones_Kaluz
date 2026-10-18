@@ -130,7 +130,7 @@
                         <thead class="bg-slate-50">
                             <tr class="border-b border-slate-200 text-xs uppercase text-[#64748B]">
                                 <th scope="col" class="px-4 py-3">Conductor</th>
-                                <th scope="col" class="px-4 py-3">Monto / método</th>
+                                <th scope="col" class="px-4 py-3">Monto / días / método</th>
                                 <th scope="col" class="px-4 py-3">Comprobante</th>
                                 <th scope="col" class="px-4 py-3">Enviado</th>
                                 <th scope="col" class="px-4 py-3 text-right">Acción</th>
@@ -144,7 +144,10 @@
                                     </td>
                                     <td class="px-4 py-3 text-slate-700">
                                         <span class="font-bold">S/ {{ number_format((float) $pago->monto, 2) }}</span>
-                                        <span class="block text-xs text-slate-500">{{ ucfirst($pago->metodo_pago ?: 'No especificado') }}</span>
+                                        <span class="block text-xs text-slate-500">
+                                            {{ $pago->dias_pagados }} {{ $pago->dias_pagados === 1 ? 'día' : 'días' }}
+                                            · {{ ucfirst($pago->metodo_pago ?: 'No especificado') }}
+                                        </span>
                                     </td>
                                     <td class="px-4 py-3">
                                         @if (is_string($pago->comprobante_url) && filter_var($pago->comprobante_url, FILTER_VALIDATE_URL) && in_array(parse_url($pago->comprobante_url, PHP_URL_SCHEME), ['http', 'https'], true))
@@ -152,8 +155,13 @@
                                                 class="font-semibold text-[#0B1B3D] underline decoration-[#E31B23] underline-offset-2">
                                                 Ver comprobante
                                             </a>
+                                        @elseif (is_string($pago->comprobante_url) && $pago->comprobante_url !== '')
+                                            <a href="{{ route('finanzas.yape.comprobante', $pago) }}" target="_blank" rel="noopener noreferrer"
+                                                class="font-semibold text-[#0B1B3D] underline decoration-[#E31B23] underline-offset-2">
+                                                Ver comprobante privado
+                                            </a>
                                         @else
-                                            <span class="text-amber-700">Sin enlace válido</span>
+                                            <span class="text-amber-700">Sin comprobante</span>
                                         @endif
                                     </td>
                                     <td class="px-4 py-3 text-slate-600">{{ $pago->fecha_registro?->format('d/m/Y H:i') ?? '—' }}</td>

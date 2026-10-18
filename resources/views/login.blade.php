@@ -52,8 +52,8 @@
                             name="usuario" 
                             id="login-usuario"
                             class="w-full px-4 py-3 bg-[#F8FAFC] border border-slate-200 rounded-xl font-body text-sm text-[#08183D] focus:outline-none focus:border-[#08183D] focus:ring-2 focus:ring-[#08183D]/10 transition" 
-                            value="{{ old('usuario', 'admin') }}" 
-                            placeholder="admin"
+                            value="{{ old('usuario') }}"
+                            placeholder="Ingresa tu usuario"
                             required
                         >
                     </div>
@@ -67,7 +67,6 @@
                             name="password" 
                             id="login-password"
                             class="w-full px-4 py-3 bg-[#F8FAFC] border border-slate-200 rounded-xl font-body text-sm text-[#08183D] focus:outline-none focus:border-[#08183D] focus:ring-2 focus:ring-[#08183D]/10 transition" 
-                            value="123456" 
                             placeholder="••••••••"
                             required
                         >

@@ -7,4 +7,6 @@ return [
         static fn (string $usuario): string => mb_strtolower(trim($usuario)),
         $administradores
     ))),
+    'yape_destino' => env('FINANZAS_YAPE_DESTINO'),
+    'plin_destino' => env('FINANZAS_PLIN_DESTINO'),
 ];

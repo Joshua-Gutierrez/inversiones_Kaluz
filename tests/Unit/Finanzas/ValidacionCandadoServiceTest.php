@@ -6,7 +6,9 @@ use App\Models\Conductor;
 use App\Models\PagoComision;
 use App\Services\Finanzas\ValidacionCandadoService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -79,6 +81,7 @@ class ValidacionCandadoServiceTest extends TestCase
             'monto' => today()->daysInMonth,
             'dias_pagados' => today()->daysInMonth,
             'metodo_pago' => 'yape',
+            'comprobante_url' => 'conductores/'.$conductor->id.'/2026/10/captura.png',
             'estado' => 'pendiente',
         ]);
 
@@ -128,6 +131,7 @@ class ValidacionCandadoServiceTest extends TestCase
             'monto' => 0.50,
             'dias_pagados' => 1,
             'metodo_pago' => 'yape',
+            'comprobante_url' => 'conductores/'.$conductor->id.'/2026/10/captura.png',
             'estado' => 'pendiente',
         ]);
 
@@ -203,12 +207,165 @@ class ValidacionCandadoServiceTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_driver_can_submit_the_end_of_month_payment_with_a_private_receipt(): void
+    {
+        Carbon::setTestNow(now()->endOfMonth()->setTime(12, 0));
+        $conductor = $this->conductor();
+        $conductor->forceFill(['created_at' => today()->startOfMonth()])->save();
+        config([
+            'services.supabase.url' => 'https://kaluz-test.supabase.co',
+            'services.supabase.service_role_key' => 'test-service-role-key',
+            'services.supabase.storage_bucket' => 'comprobantes-yape',
+        ]);
+        Http::fake();
+
+        $this->withSession(['conductor_id' => $conductor->id])
+            ->post(route('finanzas.pagos.store'), [
+                'metodo_pago' => 'yape',
+                'comprobante' => UploadedFile::fake()->image('captura.png'),
+            ])
+            ->assertRedirect(route('despacho.pwa.bloqueado'))
+            ->assertSessionHas('estado');
+
+        $pago = PagoComision::query()->firstOrFail();
+        self::assertSame('pendiente', $pago->estado);
+        self::assertSame('yape', $pago->metodo_pago);
+        self::assertSame((float) today()->daysInMonth, (float) $pago->monto);
+        self::assertSame(today()->daysInMonth, $pago->dias_pagados);
+        self::assertStringStartsWith('conductores/'.$conductor->id.'/', $pago->comprobante_url);
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && str_contains($request->url(), '/storage/v1/object/comprobantes-yape/')
+            && $request->hasHeader('Authorization', 'Bearer test-service-role-key')
+            && $request->body() !== '');
+    }
+
+    public function test_driver_cannot_register_monthly_payment_before_month_end(): void
+    {
+        Carbon::setTestNow(now()->startOfMonth()->addDay()->setTime(12, 0));
+        $conductor = $this->conductor();
+        config([
+            'services.supabase.url' => 'https://kaluz-test.supabase.co',
+            'services.supabase.service_role_key' => 'test-service-role-key',
+            'services.supabase.storage_bucket' => 'comprobantes-yape',
+        ]);
+        Http::fake();
+
+        $this->withSession(['conductor_id' => $conductor->id])
+            ->post(route('finanzas.pagos.store'), [
+                'metodo_pago' => 'yape',
+                'comprobante' => UploadedFile::fake()->image('captura.png'),
+            ])
+            ->assertSessionHasErrors('pago');
+
+        $this->assertDatabaseCount('pagos_comisiones', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_admin_opens_private_receipt_through_a_short_lived_signed_url(): void
+    {
+        $conductor = $this->conductor();
+        $pago = PagoComision::query()->create([
+            'conductor_id' => $conductor->id,
+            'monto' => 1.00,
+            'dias_pagados' => 1,
+            'metodo_pago' => 'yape',
+            'comprobante_url' => 'conductores/'.$conductor->id.'/2026/10/captura.png',
+            'estado' => 'pendiente',
+        ]);
+        config([
+            'services.supabase.url' => 'https://kaluz-test.supabase.co',
+            'services.supabase.service_role_key' => 'test-service-role-key',
+            'services.supabase.storage_bucket' => 'comprobantes-yape',
+        ]);
+        Http::fake([
+            '*' => Http::response(['signedURL' => '/object/sign/comprobantes-yape/recibo.png?token=temporary'], 200),
+        ]);
+
+        $this->get(route('finanzas.yape.comprobante', $pago))
+            ->assertRedirect('https://kaluz-test.supabase.co/storage/v1/object/sign/comprobantes-yape/recibo.png?token=temporary');
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && str_contains($request->url(), '/storage/v1/object/sign/')
+            && $request['expiresIn'] === 300);
+    }
+
+    public function test_blocked_driver_sees_monthly_amount_and_only_configured_payment_destinations(): void
+    {
+        Carbon::setTestNow(now()->endOfMonth()->setTime(12, 0));
+        $conductor = $this->conductor();
+        $conductor->forceFill(['created_at' => today()->startOfMonth()])->save();
+        config([
+            'finanzas.yape_destino' => '955111222',
+            'finanzas.plin_destino' => null,
+        ]);
+
+        $this->withSession(['conductor_id' => $conductor->id])
+            ->get(route('despacho.pwa.bloqueado'))
+            ->assertOk()
+            ->assertSee('955111222')
+            ->assertSee('Enviar comprobante por S/ '.number_format((float) today()->daysInMonth, 2))
+            ->assertDontSee('964-000-000');
+    }
+
+    public function test_blocked_driver_cannot_submit_when_no_official_payment_destination_is_configured(): void
+    {
+        Carbon::setTestNow(now()->endOfMonth()->setTime(12, 0));
+        $conductor = $this->conductor();
+        $conductor->forceFill(['created_at' => today()->startOfMonth()])->save();
+        config([
+            'finanzas.yape_destino' => null,
+            'finanzas.plin_destino' => null,
+        ]);
+
+        $this->withSession(['conductor_id' => $conductor->id])
+            ->get(route('despacho.pwa.bloqueado'))
+            ->assertOk()
+            ->assertSee('El destino oficial de Yape o Plin aún no está configurado.')
+            ->assertDontSee('Enviar comprobante por S/');
+    }
+
     public function test_driver_id_in_query_string_cannot_bypass_the_financial_lock(): void
     {
         $conductor = $this->conductor();
 
         $this->get(route('despacho.pwa', ['conductor_id' => $conductor->id]))
             ->assertRedirect(route('despacho.pwa.bloqueado'));
+    }
+
+    public function test_login_links_a_driver_account_to_the_conductor_with_the_same_dni(): void
+    {
+        $conductor = $this->conductor(['dni' => '87654321']);
+        config([
+            'services.supabase.url' => 'https://kaluz-test.supabase.co',
+            'services.supabase.key' => 'test-anon-key',
+        ]);
+        Http::fake([
+            '*' => Http::response([[
+                'usuario' => '87654321',
+                'nombre' => 'Conductor de prueba',
+            ]], 200),
+        ]);
+
+        $this->post('/login', [
+            'usuario' => '87654321',
+            'password' => 'test-password',
+        ])
+            ->assertRedirect(route('despacho.pwa'))
+            ->assertSessionHas('conductor_id', $conductor->id);
+
+        Http::assertSent(fn ($request): bool => str_contains($request->url(), '/rest/v1/usuarios'));
+    }
+
+    public function test_driver_session_cannot_open_the_admin_dashboard(): void
+    {
+        $conductor = $this->conductor(['dni' => '87654321']);
+
+        $this->withSession([
+            'usuario' => '87654321',
+            'conductor_id' => $conductor->id,
+        ])
+            ->get(route('dashboard'))
+            ->assertRedirect(route('despacho.pwa'));
     }
 
     public function test_new_conductors_start_with_the_financial_lock_enabled(): void

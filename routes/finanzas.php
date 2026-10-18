@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Finanzas\PadronController;
+use App\Http\Controllers\Finanzas\RegistroPagoController;
 use App\Http\Controllers\Finanzas\ValidacionYapeController;
 use App\Http\Middleware\EnsureFinanzasAdmin;
 use Illuminate\Support\Facades\Route;
@@ -10,6 +11,9 @@ use Illuminate\Support\Facades\Route;
 | 👨‍💻 ZONA DEV 2: Rutas de Finanzas (Candado S/ 1.00, Padrón y Validación Yape)
 |--------------------------------------------------------------------------
 */
+
+Route::post('/finanzas/pagos', [RegistroPagoController::class, 'store'])
+    ->name('finanzas.pagos.store');
 
 Route::prefix('finanzas')->name('finanzas.')
     ->middleware(EnsureFinanzasAdmin::class)
@@ -26,5 +30,7 @@ Route::prefix('finanzas')->name('finanzas.')
             ->name('yape.validar');
         Route::post('/yape/{pagoComision}/rechazar', [ValidacionYapeController::class, 'rechazarComprobante'])
             ->name('yape.rechazar');
+        Route::get('/yape/{pagoComision}/comprobante', [ValidacionYapeController::class, 'verComprobante'])
+            ->name('yape.comprobante');
         Route::get('/padron/exportar', [PadronController::class, 'exportar'])->name('padron.exportar');
     });

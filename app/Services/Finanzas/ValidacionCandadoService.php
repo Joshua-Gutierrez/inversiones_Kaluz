@@ -12,6 +12,27 @@ use Illuminate\Validation\ValidationException;
  */
 class ValidacionCandadoService
 {
+    public function diasDisponiblesParaPago(Conductor $conductor): int
+    {
+        $inicioPeriodo = today()->startOfMonth();
+        $finPeriodo = today()->endOfDay();
+        $diasReservados = $conductor->pagosComision()
+            ->whereIn('estado', ['pendiente', 'aprobado'])
+            ->whereBetween('fecha_registro', [$inicioPeriodo, $finPeriodo])
+            ->sum('dias_pagados');
+
+        return max(0, $conductor->diasComisionAcumulados() - (int) $diasReservados);
+    }
+
+    public function pagoPendienteDelMes(Conductor $conductor): ?PagoComision
+    {
+        return $conductor->pagosComision()
+            ->where('estado', 'pendiente')
+            ->whereBetween('fecha_registro', [today()->startOfMonth(), today()->endOfDay()])
+            ->latest('fecha_registro')
+            ->first();
+    }
+
     /**
      * La cuota acumula S/ 1 por día calendario y vence al cierre del mes.
      */
@@ -57,6 +78,12 @@ class ValidacionCandadoService
             $pago = PagoComision::query()->lockForUpdate()->findOrFail($pagoId);
             if ($pago->estado !== 'pendiente') {
                 return false;
+            }
+
+            if (! is_string($pago->comprobante_url) || trim($pago->comprobante_url) === '') {
+                throw ValidationException::withMessages([
+                    'pago' => 'No se puede aprobar un pago sin comprobante registrado.',
+                ]);
             }
 
             $conductor = Conductor::query()->lockForUpdate()->findOrFail($pago->conductor_id);
