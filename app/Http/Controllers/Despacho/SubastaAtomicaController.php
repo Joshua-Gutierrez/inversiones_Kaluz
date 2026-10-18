@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Despacho;
 
 use App\Http\Controllers\Controller;
 use App\Services\Despacho\AtomicAssignmentService;
+use App\Services\Supabase\Supabase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
 
 /**
  * 👨‍💻 ZONA DEV 1 - API de Subasta Atómica (JSON para la PWA del conductor)
@@ -65,6 +67,39 @@ class SubastaAtomicaController extends Controller
         $resultado = $this->asignacion->aceptarViaje($solicitudId, $conductorId);
 
         if ($resultado['ok'] && $resultado['data']) {
+            $viajeObj = $resultado['data'];
+            $conductor = $this->asignacion->obtenerConductor($conductorId);
+
+            // Si el cliente tiene número de WhatsApp, enviarle confirmación y link GPS en vivo
+            if (! empty($viajeObj->cliente_telefono) && $conductor) {
+                try {
+                    $telefonoWa = preg_replace('/\D+/', '', (string) $viajeObj->cliente_telefono);
+                    if (strlen($telefonoWa) === 9) {
+                        $telefonoWa = '51'.$telefonoWa;
+                    }
+                    $linkGps = url('/rastreo/'.$solicitudId);
+                    $precioFmt = number_format((float) ($viajeObj->precio_final ?? $viajeObj->oferta_cliente), 2, '.', '');
+
+                    Http::withoutVerifying()
+                        ->withToken((string) env('META_WA_BEARER_TOKEN'))
+                        ->timeout(8)
+                        ->post('https://graph.facebook.com/v20.0/'.env('META_WA_PHONE_NUMBER_ID').'/messages', [
+                            'messaging_product' => 'whatsapp',
+                            'to' => $telefonoWa,
+                            'type' => 'text',
+                            'text' => [
+                                'body' => "🎉 *¡Conductor Asignado - Taxi KALUZ!*\n\n".
+                                    "🚖 *Conductor:* {$conductor->nombre}\n".
+                                    "🚘 *Vehículo:* {$conductor->modelo_vehiculo} ({$conductor->placa})\n".
+                                    "💵 *Tarifa acordada:* S/ {$precioFmt}\n\n".
+                                    "📍 *Mira a tu taxi acercándose en tiempo real (GPS):*\n{$linkGps}",
+                            ],
+                        ]);
+                } catch (\Throwable) {
+                    // Continuar sin interrumpir la asignación
+                }
+            }
+
             $resultado['data'] = $this->formaSolicitud($resultado['data']);
         }
 
@@ -93,6 +128,27 @@ class SubastaAtomicaController extends Controller
             (float) $datos['monto'],
             (int) $datos['tiempo_llegada_min']
         );
+
+        // Enviar botones interactivos por WhatsApp al pasajero cuando el conductor lanza contraoferta
+        if ($resultado['ok']) {
+            try {
+                $solicitud = Supabase::table('solicitudes_viaje')->where('id', $solicitudId)->first();
+                $conductor = $this->asignacion->obtenerConductor($conductorId);
+
+                if ($solicitud && ! empty($solicitud->cliente_telefono) && $conductor) {
+                    $telefonoWa = preg_replace('/\D+/', '', (string) $solicitud->cliente_telefono);
+                    if (strlen($telefonoWa) === 9) {
+                        $telefonoWa = '51'.$telefonoWa;
+                    }
+
+                    if (function_exists('enviarContraofertaInteractiva')) {
+                        enviarContraofertaInteractiva($telefonoWa, $conductor->nombre, (float) $datos['monto']);
+                    }
+                }
+            } catch (\Throwable) {
+                // Continuar sin interrumpir respuesta JSON al radar
+            }
+        }
 
         return response()->json($resultado, $resultado['ok'] ? 200 : 409);
     }

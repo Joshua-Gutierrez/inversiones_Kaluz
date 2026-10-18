@@ -514,6 +514,14 @@
                     </select>
                 </div>
 
+                <div>
+                    <label class="font-semibold text-slate-700 block mb-1">Estado Inicial de Cuenta</label>
+                    <select name="estado_inicial" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#08142C]">
+                        <option value="habilitado">Habilitado (Listo para recibir viajes en el Radar)</option>
+                        <option value="bloqueado">Bloqueado - Debe S/ 1.00 (Para probar desbloqueo OCR por WhatsApp)</option>
+                    </select>
+                </div>
+
                 <div class="pt-2 flex justify-end gap-2">
                     <button type="button" @click="modalNuevo = false"
                         class="px-4 py-2.5 rounded-xl border border-slate-300 font-semibold text-slate-600 hover:bg-slate-50">
@@ -521,7 +529,7 @@
                     </button>
                     <button type="submit"
                         class="px-5 py-2.5 rounded-xl bg-[#08142C] hover:bg-[#13264E] text-white font-headline font-bold shadow-sm">
-                        Guardar y Habilitar
+                        Registrar Chofer
                     </button>
                 </div>
             </form>

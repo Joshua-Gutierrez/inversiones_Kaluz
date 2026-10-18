@@ -112,9 +112,11 @@ class PadronController extends Controller
             'placa' => ['required', 'string', 'max:15'],
             'modelo_vehiculo' => ['required', 'string', 'max:100'],
             'tipo_flota' => ['required', 'in:propia_combi,propia_auto,afiliado'],
+            'estado_inicial' => ['nullable', 'in:habilitado,bloqueado'],
         ]);
 
         $ahora = now();
+        $iniciaHabilitado = ($datos['estado_inicial'] ?? 'habilitado') === 'habilitado';
 
         $this->tabla('conductores')->insert([
             'nombre' => $datos['nombre'],
@@ -123,16 +125,18 @@ class PadronController extends Controller
             'placa' => strtoupper($datos['placa']),
             'modelo_vehiculo' => $datos['modelo_vehiculo'],
             'tipo_flota' => $datos['tipo_flota'],
-            'estado_comision' => 'al_dia',
-            'fecha_vencimiento_comision' => $ahora->copy()->addDays(15),
+            'estado_comision' => $iniciaHabilitado ? 'al_dia' : 'moroso',
+            'fecha_vencimiento_comision' => $iniciaHabilitado ? $ahora->copy()->addDays(15) : $ahora->copy()->subDay(),
             'fecha_vencimiento_permiso' => $ahora->copy()->addMonths(6)->toDateString(),
-            'habilitado' => true,
+            'habilitado' => $iniciaHabilitado,
             'lat_actual' => -12.0651 + (mt_rand(-35, 35) / 10000),
             'lng_actual' => -75.2049 + (mt_rand(-35, 35) / 10000),
             'created_at' => $ahora,
             'updated_at' => $ahora,
         ]);
 
-        return back()->with('exito', "Asociado {$datos['nombre']} ({$datos['placa']}) registrado y habilitado.");
+        $estadoTexto = $iniciaHabilitado ? 'HABILITADO' : 'BLOQUEADO (Moroso S/ 1.00 para prueba OCR Yape)';
+
+        return back()->with('exito', "Asociado {$datos['nombre']} ({$datos['placa']}) registrado como {$estadoTexto}.");
     }
 }
