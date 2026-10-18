@@ -7,25 +7,65 @@
     <div class="space-y-6">
         @php
             $estadoActual = $filtros['estado'] ?? '';
+            $porcentajeHabilitados = $estadisticas['total'] > 0
+                ? (int) round(($estadisticas['habilitados'] / $estadisticas['total']) * 100)
+                : 0;
             $filtrosBase = array_filter(
                 ['buscar' => $filtros['buscar'] ?? null],
                 fn ($valor) => filled($valor)
             );
         @endphp
 
-        @if ($modoDemo)
-            <div role="status" class="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
-                <p><strong>Vista de demostración:</strong> son registros ficticios de solo lectura; no se guardan en Supabase.</p>
-                <a href="{{ route('finanzas.padron') }}"
-                    class="inline-flex min-h-10 items-center justify-center rounded-lg border border-amber-400 bg-white px-4 font-bold text-amber-900 hover:bg-amber-100">
-                    Volver al padrón real
-                </a>
+        <section class="relative isolate overflow-hidden rounded-3xl bg-[#08183D] px-6 py-7 text-white shadow-xl shadow-[#08183D]/15 sm:px-8 sm:py-9">
+            <div aria-hidden="true" class="absolute -right-16 -top-28 -z-10 h-72 w-72 rounded-full border-[32px] border-white/[0.04]"></div>
+            <div aria-hidden="true" class="absolute -bottom-24 right-44 -z-10 h-48 w-48 rounded-full bg-[#E31B23]/20 blur-3xl"></div>
+            <div class="absolute inset-y-0 left-0 w-1.5 bg-[#E31B23]"></div>
+            <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div class="max-w-2xl">
+                    <div class="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-200">
+                        <span class="h-2 w-2 rounded-full bg-[#E31B23] shadow-[0_0_10px_rgba(227,27,35,0.8)]"></span>
+                        Finanzas <span class="text-white/40">/</span> Control de socios
+                    </div>
+                    <h2 class="font-headline text-2xl font-extrabold tracking-tight text-white sm:text-3xl">Padrón de conductores</h2>
+                    <p class="mt-2 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
+                        Supervisa habilitaciones, documentos y comisión diaria desde un solo lugar.
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    @if ($modoDemo)
+                        <span class="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.08] px-4 py-3 text-sm font-semibold text-white">
+                            <svg aria-hidden="true" class="h-5 w-5 text-[#E31B23]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <path d="M12 3 4.5 6v5.5c0 4.4 3 7.7 7.5 9.5 4.5-1.8 7.5-5.1 7.5-9.5V6L12 3Z"></path>
+                                <path d="m9 12 2 2 4-4"></path>
+                            </svg>
+                            Entorno de prueba
+                        </span>
+                    @elseif (app()->environment('local'))
+                        <a href="{{ route('finanzas.padron', ['demo' => 1]) }}"
+                            class="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#E31B23] px-5 text-sm font-bold text-white shadow-lg shadow-black/20 transition hover:bg-red-700 focus:outline-none focus:ring-4 focus:ring-white/20">
+                            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 3v18M3 12h18"></path>
+                            </svg>
+                            Probar con datos ficticios
+                        </a>
+                    @endif
+                </div>
             </div>
-        @elseif (app()->environment('local'))
-            <div class="flex justify-end">
-                <a href="{{ route('finanzas.padron', ['demo' => 1]) }}"
-                    class="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-[#0B1B3D] shadow-sm transition hover:bg-slate-50">
-                    Ver datos de demostración
+        </section>
+
+        @if ($modoDemo)
+            <div role="status" class="flex flex-col gap-3 rounded-2xl border border-[#E31B23]/20 bg-white px-4 py-4 text-sm text-[#08183D] shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <p class="flex items-start gap-3">
+                    <span class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#E31B23]/10 text-[#E31B23]">
+                        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path d="M12 8v4m0 4h.01M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3l-7.6-13.1a2 2 0 0 0-3.4 0Z"></path>
+                        </svg>
+                    </span>
+                    <span><strong class="block">Vista de demostración</strong><span class="mt-0.5 block text-slate-600">Registros ficticios de solo lectura. No se guardan cambios en Supabase.</span></span>
+                </p>
+                <a href="{{ route('finanzas.padron') }}"
+                    class="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 font-bold text-[#08183D] transition hover:border-[#08183D]/30 hover:bg-slate-50">
+                    Volver al padrón real
                 </a>
             </div>
         @endif
@@ -45,18 +85,53 @@
             </div>
         @endif
 
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <x-tarjeta-kaluz titulo="Conductores en padrón" subtitulo="Afiliados y flota propia">
-                <p class="text-3xl font-extrabold text-[#0B1B3D]">{{ number_format($estadisticas['total']) }}</p>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <x-tarjeta-kaluz titulo="Conductores en padrón" subtitulo="Socios y flota propia" class="border-t-4 border-t-[#08183D]">
+                <div class="flex items-end justify-between">
+                    <p class="font-headline text-4xl font-extrabold tracking-tight text-[#08183D]">{{ number_format($estadisticas['total']) }}</p>
+                    <span class="mb-1 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[#08183D]/[0.07] text-[#08183D]">
+                        <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <circle cx="9" cy="8" r="3.5"></circle><path d="M2.8 20v-1.5A4.5 4.5 0 0 1 7.3 14h3.4a4.5 4.5 0 0 1 4.5 4.5V20"></path><path d="M16 4.8a3.5 3.5 0 0 1 0 6.5m2 2.8a4.5 4.5 0 0 1 3.2 4.3V20"></path>
+                        </svg>
+                    </span>
+                </div>
+                <div class="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <div class="h-full rounded-full bg-[#08183D]" style="width: {{ $porcentajeHabilitados }}%"></div>
+                </div>
+                <p class="mt-2 text-xs font-medium text-slate-500">{{ $porcentajeHabilitados }}% habilitados</p>
             </x-tarjeta-kaluz>
-            <x-tarjeta-kaluz titulo="Habilitados" subtitulo="Comisión y permiso vigentes">
-                <p class="text-3xl font-extrabold text-emerald-700">{{ number_format($estadisticas['habilitados']) }}</p>
+            <x-tarjeta-kaluz titulo="Habilitados" subtitulo="Listos para recibir viajes" class="border-t-4 border-t-emerald-500">
+                <div class="flex items-end justify-between">
+                    <p class="font-headline text-4xl font-extrabold tracking-tight text-emerald-700">{{ number_format($estadisticas['habilitados']) }}</p>
+                    <span class="mb-1 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                        <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path d="M5 12.5 9.2 17 19 7"></path><circle cx="12" cy="12" r="9"></circle>
+                        </svg>
+                    </span>
+                </div>
+                <p class="mt-4 text-xs font-medium text-slate-500">Comisión y permiso vigentes</p>
             </x-tarjeta-kaluz>
-            <x-tarjeta-kaluz titulo="Con candado activo" subtitulo="Sin acceso a recibir viajes">
-                <p class="text-3xl font-extrabold text-[#E31B23]">{{ number_format($estadisticas['bloqueados']) }}</p>
+            <x-tarjeta-kaluz titulo="Con candado activo" subtitulo="Requieren revisión" class="border-t-4 border-t-[#E31B23]">
+                <div class="flex items-end justify-between">
+                    <p class="font-headline text-4xl font-extrabold tracking-tight text-[#E31B23]">{{ number_format($estadisticas['bloqueados']) }}</p>
+                    <span class="mb-1 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[#E31B23]/[0.08] text-[#E31B23]">
+                        <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <rect x="4" y="10" width="16" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 1 1 8 0v3m-4 4v3"></path>
+                        </svg>
+                    </span>
+                </div>
+                <p class="mt-4 text-xs font-medium text-slate-500">Sin acceso a recibir viajes</p>
             </x-tarjeta-kaluz>
-            <x-tarjeta-kaluz titulo="Permiso por vencer" subtitulo="Vence dentro de los próximos 30 días">
-                <p class="text-3xl font-extrabold text-amber-600">{{ number_format($estadisticas['permisosPorVencer']) }}</p>
+            <x-tarjeta-kaluz titulo="Permiso por vencer" subtitulo="Dentro de los próximos 30 días" class="border-t-4 border-t-amber-400">
+                <div class="flex items-end justify-between">
+                    <p class="font-headline text-4xl font-extrabold tracking-tight text-amber-600">{{ number_format($estadisticas['permisosPorVencer']) }}</p>
+                    <span class="mb-1 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                        <svg aria-hidden="true" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18m-9 4v3m0 0 2-2m-2 2-2-2"></path>
+                        </svg>
+                    </span>
+                </div>
+                <p class="mt-4 text-xs font-medium text-slate-500">Revisar renovación de SOAT</p>
             </x-tarjeta-kaluz>
         </div>
 
@@ -121,6 +196,9 @@
             <div class="mb-6 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 md:p-5">
                 <form method="GET" action="{{ route('finanzas.padron') }}"
                     class="flex flex-col gap-3 lg:flex-row lg:items-center">
+                    @if ($modoDemo)
+                        <input type="hidden" name="demo" value="1">
+                    @endif
                     @if ($estadoActual)
                         <input type="hidden" name="estado" value="{{ $estadoActual }}">
                     @endif
@@ -139,14 +217,16 @@
                         class="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#0B1B3D] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#142d5b] focus:outline-none focus:ring-4 focus:ring-[#0B1B3D]/20">
                         Buscar
                     </button>
-                    <a href="{{ route('finanzas.padron.exportar', request()->query()) }}"
-                        class="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-[#0B1B3D] shadow-sm transition hover:border-slate-400 hover:bg-slate-100">
-                        <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                            <path d="M12 3v12m0 0 4-4m-4 4-4-4"></path>
-                            <path d="M4 16v4h16v-4"></path>
-                        </svg>
-                        Exportar CSV
-                    </a>
+                    @unless ($modoDemo)
+                        <a href="{{ route('finanzas.padron.exportar', request()->query()) }}"
+                            class="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-[#0B1B3D] shadow-sm transition hover:border-slate-400 hover:bg-slate-100">
+                            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <path d="M12 3v12m0 0 4-4m-4 4-4-4"></path>
+                                <path d="M4 16v4h16v-4"></path>
+                            </svg>
+                            Exportar CSV
+                        </a>
+                    @endunless
                 </form>
 
                 <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -155,7 +235,7 @@
                         <p class="mt-1 text-xs text-slate-500">Selecciona una categoría para filtrar la tabla.</p>
                     </div>
                     <nav aria-label="Filtrar conductores por estado" class="grid grid-cols-3 gap-2 rounded-xl bg-slate-200/70 p-1">
-                        <a href="{{ route('finanzas.padron', $filtrosBase) }}"
+                        <a href="{{ route('finanzas.padron', $filtrosBase + ($modoDemo ? ['demo' => 1] : [])) }}"
                             @if ($estadoActual === '') aria-current="page" @endif
                             class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition {{ $estadoActual === '' ? 'bg-white text-[#0B1B3D] shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:bg-white/70 hover:text-[#0B1B3D]' }}">
                             Todos
@@ -163,7 +243,7 @@
                                 {{ number_format($estadisticas['total']) }}
                             </span>
                         </a>
-                        <a href="{{ route('finanzas.padron', $filtrosBase + ['estado' => 'habilitado']) }}"
+                        <a href="{{ route('finanzas.padron', $filtrosBase + ['estado' => 'habilitado'] + ($modoDemo ? ['demo' => 1] : [])) }}"
                             @if ($estadoActual === 'habilitado') aria-current="page" @endif
                             class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition {{ $estadoActual === 'habilitado' ? 'bg-white text-emerald-800 shadow-sm ring-1 ring-emerald-200' : 'text-slate-600 hover:bg-white/70 hover:text-emerald-800' }}">
                             <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
@@ -172,7 +252,7 @@
                                 {{ number_format($estadisticas['habilitados']) }}
                             </span>
                         </a>
-                        <a href="{{ route('finanzas.padron', $filtrosBase + ['estado' => 'bloqueado']) }}"
+                        <a href="{{ route('finanzas.padron', $filtrosBase + ['estado' => 'bloqueado'] + ($modoDemo ? ['demo' => 1] : [])) }}"
                             @if ($estadoActual === 'bloqueado') aria-current="page" @endif
                             class="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition {{ $estadoActual === 'bloqueado' ? 'bg-white text-[#E31B23] shadow-sm ring-1 ring-red-200' : 'text-slate-600 hover:bg-white/70 hover:text-[#E31B23]' }}">
                             <span class="h-2 w-2 rounded-full bg-[#E31B23]"></span>
@@ -185,25 +265,33 @@
                 </div>
             </div>
             @if ($modoDemo)
-                <p class="mb-4 text-xs text-slate-500">Datos inventados para probar búsqueda, filtros, semáforo y paginación. Los formularios de escritura están desactivados.</p>
+                <p class="mb-4 flex items-center gap-2 text-xs font-medium text-slate-500">
+                    <span class="h-1.5 w-1.5 rounded-full bg-[#E31B23]"></span>
+                    Datos ficticios para probar búsqueda, filtros, semáforo y paginación. Las acciones de escritura y exportación están desactivadas.
+                </p>
             @endif
 
             <div class="overflow-x-auto">
-                <table class="w-full border-collapse text-left text-sm">
-                    <thead>
-                        <tr class="border-b border-slate-200 text-xs uppercase text-[#64748B]">
-                            <th scope="col" class="px-4 py-3">Conductor</th>
-                            <th scope="col" class="px-4 py-3">Contacto</th>
-                            <th scope="col" class="px-4 py-3">Unidad</th>
-                            <th scope="col" class="px-4 py-3">Comisión pendiente</th>
-                            <th scope="col" class="px-4 py-3">Permiso / SOAT</th>
-                            <th scope="col" class="px-4 py-3">Semáforo</th>
-                            <th scope="col" class="px-4 py-3">Gestión</th>
+                <table class="min-w-[900px] w-full border-collapse text-left text-sm">
+                    <thead class="bg-[#08183D]">
+                        <tr class="text-[11px] uppercase tracking-wider text-white/80">
+                            <th scope="col" class="rounded-l-xl px-4 py-3.5 font-semibold">Conductor</th>
+                            <th scope="col" class="px-4 py-3.5 font-semibold">Contacto</th>
+                            <th scope="col" class="px-4 py-3.5 font-semibold">Unidad</th>
+                            <th scope="col" class="px-4 py-3.5 font-semibold">Comisión pendiente</th>
+                            <th scope="col" class="px-4 py-3.5 font-semibold">Permiso / SOAT</th>
+                            <th scope="col" class="px-4 py-3.5 font-semibold">Semáforo</th>
+                            <th scope="col" class="rounded-r-xl px-4 py-3.5 font-semibold">Gestión</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($conductores as $conductor)
                             @php
+                                $iniciales = collect(explode(' ', trim($conductor->nombre)))
+                                    ->filter()
+                                    ->take(2)
+                                    ->map(fn ($nombre) => mb_substr($nombre, 0, 1))
+                                    ->implode('');
                                 $permisoVigente = $conductor->fecha_vencimiento_permiso
                                     && ! $conductor->fecha_vencimiento_permiso->isBefore(today());
                                 $porVencer = $permisoVigente
@@ -214,15 +302,22 @@
                                     && $permisoVigente;
                                 $pagoReciente = $conductor->pagosComision->first();
                             @endphp
-                            <tr class="transition hover:bg-slate-50">
-                                <td class="px-4 py-3">
-                                    <p class="font-semibold text-[#0B1B3D]">{{ $conductor->nombre }}</p>
-                                    <p class="text-xs text-slate-500">DNI {{ $conductor->dni ?: 'No registrado' }}</p>
+                            <tr class="border-b border-slate-100 transition duration-150 last:border-0 hover:bg-[#08183D]/[0.025]">
+                                <td class="px-4 py-4">
+                                    <div class="flex items-center gap-3">
+                                        <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#08183D]/[0.07] font-headline text-xs font-extrabold uppercase text-[#08183D] ring-1 ring-[#08183D]/10">
+                                            {{ $iniciales }}
+                                        </span>
+                                        <div>
+                                            <p class="font-semibold text-[#08183D]">{{ $conductor->nombre }}</p>
+                                            <p class="mt-0.5 text-xs text-slate-500">DNI {{ $conductor->dni ?: 'No registrado' }}</p>
+                                        </div>
+                                    </div>
                                 </td>
-                                <td class="px-4 py-3 text-slate-600">{{ $conductor->telefono_whatsapp ?: '—' }}</td>
+                                <td class="px-4 py-4 text-slate-600">{{ $conductor->telefono_whatsapp ?: '—' }}</td>
                                 <td class="px-4 py-3">
-                                    <p class="font-semibold text-slate-700">{{ $conductor->placa ?: 'Sin placa' }}</p>
-                                    <p class="text-xs text-slate-500">{{ $conductor->modelo_vehiculo ?: 'Vehículo no registrado' }}</p>
+                                    <p class="inline-flex rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-bold tracking-wide text-[#08183D]">{{ $conductor->placa ?: 'Sin placa' }}</p>
+                                    <p class="mt-1 text-xs text-slate-500">{{ $conductor->modelo_vehiculo ?: 'Vehículo no registrado' }}</p>
                                 </td>
                                 <td class="px-4 py-3 font-semibold {{ (float) $conductor->deuda_comision > 0 ? 'text-[#E31B23]' : 'text-emerald-700' }}">
                                     S/ {{ number_format((float) $conductor->deuda_comision, 2) }}

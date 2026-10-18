@@ -162,7 +162,16 @@ class ValidacionCandadoServiceTest extends TestCase
             ->assertDontSee('Registrar socio o unidad propia')
             ->assertDontSee('Guardar cambios')
             ->assertDontSee('Aprobar')
-            ->assertDontSee('Rechazar');
+            ->assertDontSee('Rechazar')
+            ->assertDontSee('Exportar CSV')
+            ->assertSee('name="demo" value="1"', false)
+            ->assertSee('demo=1', false);
+
+        $this->get(route('finanzas.padron', ['demo' => 1, 'estado' => 'habilitado']))
+            ->assertOk()
+            ->assertSee('Conductor Demo 01')
+            ->assertDontSee('Conductor Demo 07')
+            ->assertSee('Vista de demostración');
 
         self::assertSame([], DB::getQueryLog(), 'La vista de demostración no debe consultar la base de datos.');
     }
