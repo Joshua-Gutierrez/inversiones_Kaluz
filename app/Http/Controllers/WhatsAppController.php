@@ -326,8 +326,8 @@ class WhatsAppController extends Controller
                 $cuerpoTexto = trim((string) data_get($message, 'text.body', ''));
                 $nombreContacto = (string) data_get($payload, 'entry.0.changes.0.value.contacts.0.profile.name', 'Pasajero WhatsApp');
 
-                $patronViajeConPrefijo = '/^(?:desde\s*:?\s*|de\s+|estoy\s+en\s+)(.+?)\s+(?:a\s*:?\s*|hacia\s+|hasta\s+|para\s+|destino\s*:?\s*|voy\s+a\s+|voy\s+para\s+)([^,\.\n]+?)(?:\s+(?:por|oferta\s*:?|y\s+ofrezco|ofrezco|s\/\.?)\s*(?:s\/\.?\s*)?(\d+(?:[\.,]\d+)?)\s*(?:soles|sol)?)?$/isu';
-                $patronViajeDirecto = '/^([a-záéíóúñ0-9\s\.]{3,45}?)\s+(?:a|hacia|hasta)\s+([a-záéíóúñ0-9\s\.]{3,45}?)(?:\s+(?:por|oferta\s*:?|ofrezco|s\/\.?)\s*(?:s\/\.?\s*)?(\d+(?:[\.,]\d+)?)\s*(?:soles|sol)?)?$/isu';
+                $patronViajeConPrefijo = '/^(?:desde\s*:?\s*|de\s+|estoy\s+en\s+)(.+?)\s+(?:a\s*:?\s*|al\s+|hacia\s+|hasta\s+|para\s+|destino\s*:?\s*|voy\s+a\s+|voy\s+al\s+|voy\s+para\s+)([^,\.\n]+?)(?:\s+(?:por|oferta\s*:?|y\s+ofrezco|ofrezco|s\/\.?)\s*(?:s\/\.?\s*)?(\d+(?:[\.,]\d+)?)\s*(?:soles|sol)?)?$/isu';
+                $patronViajeDirecto = '/^([a-záéíóúñ0-9\s\.]{3,50}?)\s+(?:a|al|hacia|hasta)\s+([a-záéíóúñ0-9\s\.]{3,50}?)(?:\s+(?:por|oferta\s*:?|ofrezco|s\/\.?)\s*(?:s\/\.?\s*)?(\d+(?:[\.,]\d+)?)\s*(?:soles|sol)?)?$/isu';
                 $patronMontoOferta = '/^(?:s\/\.?\s*|por\s+|oferta\s*:?\s*|ofrezco\s+|pago\s+|doy\s+|tarifa\s*:?\s*)?(\d{1,3}(?:[\.,]\d{1,2})?)\s*(?:soles|sol|s\/\.?|nuevos\s+soles|lucas)?$/iu';
                 $parecePagoChofer = (bool) preg_match('/\b(pagu[eé]|yape|plin|comprobante|voucher|cuota|bloqueado|desbloquea)\b/i', $cuerpoTexto);
                 $esSaludoSimple = (bool) preg_match('/^(hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|buenas\s+noches|taxi|inicio|empezar|menu|men[uú]|ayuda)\b/iu', $cuerpoTexto);
