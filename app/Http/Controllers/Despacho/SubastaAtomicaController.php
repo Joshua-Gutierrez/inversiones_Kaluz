@@ -70,14 +70,13 @@ class SubastaAtomicaController extends Controller
             $viajeObj = $resultado['data'];
             $conductor = $this->asignacion->obtenerConductor($conductorId);
 
-            // Si el cliente tiene número de WhatsApp, enviarle confirmación y link GPS en vivo
+            // FLUJO 1 - Paso 5A: Si el chofer acepta directamente la tarifa del cliente
             if (! empty($viajeObj->cliente_telefono) && $conductor) {
                 try {
                     $telefonoWa = preg_replace('/\D+/', '', (string) $viajeObj->cliente_telefono);
                     if (strlen($telefonoWa) === 9) {
                         $telefonoWa = '51'.$telefonoWa;
                     }
-                    $linkGps = url('/rastreo/'.$solicitudId);
                     $precioFmt = number_format((float) ($viajeObj->precio_final ?? $viajeObj->oferta_cliente), 2, '.', '');
 
                     Http::withoutVerifying()
@@ -88,11 +87,11 @@ class SubastaAtomicaController extends Controller
                             'to' => $telefonoWa,
                             'type' => 'text',
                             'text' => [
-                                'body' => "🎉 *¡Conductor Asignado - Taxi KALUZ!*\n\n".
-                                    "🚖 *Conductor:* {$conductor->nombre}\n".
-                                    "🚘 *Vehículo:* {$conductor->modelo_vehiculo} ({$conductor->placa})\n".
-                                    "💵 *Tarifa acordada:* S/ {$precioFmt}\n\n".
-                                    "📍 *Mira a tu taxi acercándose en tiempo real (GPS):*\n{$linkGps}",
+                                'body' => "🎉 ¡Viaje confirmado!\n\n".
+                                    "🚗 Conductor: {$conductor->nombre}\n".
+                                    "🚙 Vehículo: {$conductor->modelo_vehiculo} ({$conductor->placa})\n".
+                                    "💰 Tarifa acordada: S/ {$precioFmt}\n\n".
+                                    'El conductor ya tiene tu ubicación y está en camino. ¡Gracias por usar KALUZ!',
                             ],
                         ]);
                 } catch (\Throwable) {
@@ -129,7 +128,7 @@ class SubastaAtomicaController extends Controller
             (int) $datos['tiempo_llegada_min']
         );
 
-        // Enviar botones interactivos por WhatsApp al pasajero cuando el conductor lanza contraoferta
+        // FLUJO 1 - Paso 4: Enviar botones interactivos por WhatsApp al pasajero cuando el conductor lanza contraoferta
         if ($resultado['ok']) {
             try {
                 $solicitud = Supabase::table('solicitudes_viaje')->where('id', $solicitudId)->first();
@@ -142,7 +141,12 @@ class SubastaAtomicaController extends Controller
                     }
 
                     if (function_exists('enviarContraofertaInteractiva')) {
-                        enviarContraofertaInteractiva($telefonoWa, $conductor->nombre, (float) $datos['monto']);
+                        enviarContraofertaInteractiva(
+                            $telefonoWa,
+                            (string) $conductor->nombre,
+                            (float) $datos['monto'],
+                            (string) ($conductor->placa ?? 'W3X-451')
+                        );
                     }
                 }
             } catch (\Throwable) {

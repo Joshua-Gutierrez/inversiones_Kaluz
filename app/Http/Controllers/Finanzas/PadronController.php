@@ -139,4 +139,35 @@ class PadronController extends Controller
 
         return back()->with('exito', "Asociado {$datos['nombre']} ({$datos['placa']}) registrado como {$estadoTexto}.");
     }
+
+    /**
+     * FLUJO 2 - PASO 1: Dispara la Alerta de Cobro Matutino (S/ 1.00) por WhatsApp Cloud API al chofer seleccionado.
+     */
+    public function enviarCobroWhatsApp(int $id): RedirectResponse
+    {
+        $conductor = $this->tabla('conductores')->where('id', $id)->first();
+
+        if (! $conductor) {
+            return back()->with('error', 'Conductor no encontrado.');
+        }
+
+        // Activar el candado financiero (moroso) y disparar la alerta por el Bot de Meta
+        $this->tabla('conductores')->where('id', $id)->update([
+            'habilitado' => false,
+            'estado_comision' => 'moroso',
+            'fecha_vencimiento_comision' => now()->subDay(),
+            'updated_at' => now(),
+        ]);
+
+        $enviado = false;
+        if (function_exists('enviarCobroMatutinoChofer') && ! empty($conductor->telefono_whatsapp)) {
+            $enviado = enviarCobroMatutinoChofer((string) $conductor->telefono_whatsapp);
+        }
+
+        if ($enviado) {
+            return back()->with('exito', "Alerta de Cobro Matutino (S/ 1.00) enviada por el Bot de WhatsApp a {$conductor->nombre} ({$conductor->telefono_whatsapp}).");
+        }
+
+        return back()->with('exito', "Candado activado para {$conductor->nombre}. (Recuerda verificar que el número {$conductor->telefono_whatsapp} esté autorizado en Meta si la app está en modo prueba).");
+    }
 }

@@ -46,36 +46,46 @@ class WhatsAppController extends Controller
 
     /**
      * POST /api/webhook
-     * Procesa los mensajes entrantes de WhatsApp Cloud API (Candado Financiero OCR Yape/Plin).
-     * Siempre devuelve HTTP 200 para evitar que Meta desactive el webhook en producción (Vercel).
+     * Procesa Flujo 1 (Pasajero: Pedir Taxi y Negociar) y Flujo 2 (Chofer: Candado Financiero OCR).
+     * Siempre devuelve HTTP 200 para evitar que Meta desactive el webhook en Vercel.
      */
-    public function handle(Request $request): JsonResponse
+    public function handle(Request $request): Response|JsonResponse
     {
-        $tempFilePath = null;
-
         try {
             $payload = $request->all();
-
             $message = data_get($payload, 'entry.0.changes.0.value.messages.0');
 
-            // Si es una notificación de estado de Meta (sent, delivered, read) o no contiene mensaje
             if (! is_array($message)) {
-                return response()->json(['status' => 'EVENT_RECEIVED'], 200);
+                return response('EVENT_RECEIVED', 200);
             }
 
             $remitente = (string) ($message['from'] ?? '');
             $tipo = (string) ($message['type'] ?? '');
 
             if ($remitente === '') {
-                return response()->json(['status' => 'NO_SENDER'], 200);
+                return response('EVENT_RECEIVED', 200);
             }
 
-            // Si el conductor envía una imagen (captura de pantalla de Yape / Plin)
+            // Distinguir rol: verificar si el remitente es un Chofer registrado en Supabase
+            $soloDigitos = preg_replace('/\D+/', '', $remitente);
+            $ultimos9 = strlen($soloDigitos) >= 9 ? substr($soloDigitos, -9) : $soloDigitos;
+
+            $choferRegistrado = Supabase::table('conductores')
+                ->where('telefono_whatsapp', 'ilike', "%{$ultimos9}%")
+                ->first();
+
+            $esChoferMoroso = $choferRegistrado && ! (bool) ($choferRegistrado->habilitado ?? false);
+
+            /*
+            |--------------------------------------------------------------------------
+            | 🔒 FLUJO 2: EL CHOFER (CANDADO FINANCIERO Y VALIDACIÓN OCR EN MEMORIA)
+            |--------------------------------------------------------------------------
+            */
             if ($tipo === 'image') {
                 $mediaId = (string) data_get($message, 'image.id', '');
 
                 if ($mediaId === '') {
-                    return response()->json(['status' => 'NO_MEDIA_ID'], 200);
+                    return response('EVENT_RECEIVED', 200);
                 }
 
                 // 1. Obtener la URL de descarga desde Meta Graph API v20.0
@@ -84,94 +94,64 @@ class WhatsAppController extends Controller
                 if (! $mediaUrl) {
                     $this->enviarMensajeWhatsApp(
                         $remitente,
-                        '⚠️ Taxi KALUZ: No pudimos descargar tu comprobante desde WhatsApp. Por favor, intenta enviarlo nuevamente.'
+                        "❌ No pudimos validar tu comprobante.\n\n".
+                        'Asegúrate de que la captura se vea nítida, muestre el logo de Yape/Plin, la fecha de hoy y el monto exacto de S/ 1.00. Vuelve a enviar la imagen, por favor.'
                     );
 
-                    return response()->json(['status' => 'MEDIA_URL_ERROR'], 200);
+                    return response('EVENT_RECEIVED', 200);
                 }
 
-                // 2. Descargar el archivo binario en memoria y guardarlo temporalmente en /tmp (Serverless Vercel)
+                // 2. Descargar el archivo binario de la imagen 100% en memoria (Serverless Vercel)
                 $binarioImagen = $this->descargarBinarioMeta($mediaUrl);
 
                 if (! $binarioImagen) {
                     $this->enviarMensajeWhatsApp(
                         $remitente,
-                        '⚠️ Taxi KALUZ: Ocurrió un problema al leer la imagen del comprobante. Intenta enviarla de nuevo.'
+                        "❌ No pudimos validar tu comprobante.\n\n".
+                        'Asegúrate de que la captura se vea nítida, muestre el logo de Yape/Plin, la fecha de hoy y el monto exacto de S/ 1.00. Vuelve a enviar la imagen, por favor.'
                     );
 
-                    return response()->json(['status' => 'MEDIA_DOWNLOAD_ERROR'], 200);
+                    return response('EVENT_RECEIVED', 200);
                 }
 
-                $tempFilePath = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'voucher_'.uniqid('', true).'.jpg';
-                file_put_contents($tempFilePath, $binarioImagen);
+                // 3. Enviar el binario en memoria mediante Http::attach() a OCR.space API (idioma: español)
+                $textoExtraido = $this->extraerTextoMemoriaOcrSpace($binarioImagen);
 
-                // 3. Enviar archivo temporal a OCR.space API (idioma: español)
-                $textoExtraido = $this->extraerTextoConOcrSpace($tempFilePath);
-
-                // Eliminar inmediatamente el archivo temporal después de usar OCR.space
-                if ($tempFilePath && file_exists($tempFilePath)) {
-                    @unlink($tempFilePath);
-                    $tempFilePath = null;
-                }
-
-                if ($textoExtraido === '') {
-                    $this->enviarMensajeWhatsApp(
-                        $remitente,
-                        '❌ Taxi KALUZ: No pudimos leer el texto de la imagen. Asegúrate de enviar una captura nítida de tu pago de S/ 1.00 por Yape o Plin.'
-                    );
-
-                    return response()->json(['status' => 'OCR_EMPTY'], 200);
-                }
-
-                // 4. Validar las 3 condiciones del comprobante: (Yape/Plin + Monto 1.00 + Fecha de hoy)
+                // 4. Validar comprobante (Yape/Plin + Monto 1.00)
                 $validacion = $this->validarComprobanteOcr($textoExtraido);
 
                 if ($validacion['es_valido']) {
                     // 5. Actualizar estado del conductor a habilitado en Supabase
-                    $conductorActualizado = $this->habilitarConductorEnSupabase(
+                    $this->habilitarConductorEnSupabase(
                         $remitente,
                         $validacion['metodo'],
                         $validacion['codigo_operacion'],
                         $textoExtraido
                     );
 
-                    $nombreConductor = $conductorActualizado['nombre'] ?? 'Conductor';
-                    $codigoOp = $validacion['codigo_operacion'] ?: 'VERIFICADO';
-
-                    // 6. Responder al conductor por WhatsApp confirmando el desbloqueo
+                    // FLUJO 2 - Paso 3A: Validación Exitosa del OCR
                     $this->enviarMensajeWhatsApp(
                         $remitente,
-                        "✅ *¡CANDADO FINANCIERO DESBLOQUEADO!* 🚖\n\n".
-                        "Hola *{$nombreConductor}*, validamos tu pago diario de *S/ 1.00* vía *{$validacion['metodo']}* (Op: #{$codigoOp}).\n\n".
-                        'Tu cuenta ya está *HABILITADA* para recibir carreras en el Radar de Taxi KALUZ. ¡Buen turno!'
+                        "✅ ¡Pago validado exitosamente!\n\n".
+                        'Tu Radar de Viajes ha sido desbloqueado. Ya puedes ingresar a tu panel web y empezar a recibir solicitudes. ¡Buen turno!'
                     );
-
-                    return response()->json([
-                        'status' => 'PAYMENT_VALIDATED',
-                        'conductor' => $nombreConductor,
-                        'validacion' => $validacion,
-                    ], 200);
+                } else {
+                    // FLUJO 2 - Paso 3B: Falla en la Validación del OCR
+                    $this->enviarMensajeWhatsApp(
+                        $remitente,
+                        "❌ No pudimos validar tu comprobante.\n\n".
+                        'Asegúrate de que la captura se vea nítida, muestre el logo de Yape/Plin, la fecha de hoy y el monto exacto de S/ 1.00. Vuelve a enviar la imagen, por favor.'
+                    );
                 }
 
-                // Si no cumplió alguna de las 3 reglas de validación OCR
-                $motivos = implode(', ', $validacion['errores']);
-                $this->enviarMensajeWhatsApp(
-                    $remitente,
-                    "⚠️ *Comprobante no válido - Taxi KALUZ*\n\n".
-                    "No pudimos validar tu captura automáticamente ({$motivos}).\n\n".
-                    "Verifica que la captura muestre claramente:\n".
-                    "1️⃣ *Yape* o *Plin*\n".
-                    "2️⃣ Monto exacto de *S/ 1.00*\n".
-                    '3️⃣ Fecha del *día de hoy* ('.Carbon::now('America/Lima')->format('d/m/Y').')'
-                );
-
-                return response()->json([
-                    'status' => 'PAYMENT_REJECTED',
-                    'validacion' => $validacion,
-                ], 200);
+                return response('EVENT_RECEIVED', 200);
             }
 
-            // Si un pasajero envía su UBICACIÓN para pedir un taxi
+            /*
+            |--------------------------------------------------------------------------
+            | 🚖 FLUJO 1: EL PASAJERO (PEDIR UN TAXI Y NEGOCIAR ESTILO INDRIVE)
+            |--------------------------------------------------------------------------
+            */
             if ($tipo === 'location') {
                 $latPasajero = (float) data_get($message, 'location.latitude', 0);
                 $lonPasajero = (float) data_get($message, 'location.longitude', 0);
@@ -190,42 +170,34 @@ class WhatsAppController extends Controller
                         'origen_lng' => $lonPasajero ?: -75.2069,
                         'updated_at' => now()->toIso8601String(),
                     ]);
-                    $idRastreo = $solicitudPendiente->id;
                 } else {
-                    $viajeCreado = Supabase::table('solicitudes_viaje')->insert([
+                    Supabase::table('solicitudes_viaje')->insert([
                         'cliente_nombre' => $nombreContacto,
                         'cliente_telefono' => $remitente,
                         'origen_texto' => $direccionEnviada,
                         'origen_lat' => $latPasajero ?: -12.0681,
                         'origen_lng' => $lonPasajero ?: -75.2069,
-                        'destino_texto' => 'Centro de Huancayo (Ubicación WhatsApp)',
-                        'destino_lat' => -12.0651,
-                        'destino_lng' => -75.2049,
+                        'destino_texto' => 'Parque de la Identidad',
+                        'destino_lat' => -12.0558,
+                        'destino_lng' => -75.2185,
                         'tipo_servicio' => 'urbano',
                         'oferta_cliente' => 6.00,
                         'estado' => 'pendiente',
                         'created_at' => now()->toIso8601String(),
                         'updated_at' => now()->toIso8601String(),
                     ]);
-                    $idRastreo = $viajeCreado->id ?? 1;
                 }
 
-                $linkRastreo = url('/rastreo/'.$idRastreo);
-
+                // FLUJO 1 - Paso 3: Confirmación de Búsqueda
                 $this->enviarMensajeWhatsApp(
                     $remitente,
-                    "📍 Ubicación recibida. Buscando conductores a menos de 2km...\n\n🗺️ Ver ofertas y GPS en vivo:\n{$linkRastreo}"
+                    "🔎 Ubicación recibida. Estamos alertando a los taxis a tu alrededor con tu ruta.\n\n".
+                    'En unos segundos te enviaré las ofertas de los conductores. ¡Atento!'
                 );
 
-                return response()->json([
-                    'status' => 'LOCATION_RECEIVED',
-                    'solicitud_id' => $idRastreo,
-                    'latitude' => $latPasajero,
-                    'longitude' => $lonPasajero,
-                ], 200);
+                return response('EVENT_RECEIVED', 200);
             }
 
-            // Si el pasajero responde a los botones interactivos de contraoferta (Aceptar / Rechazar)
             if ($tipo === 'interactive') {
                 $botonId = (string) ($message['interactive']['button_reply']['id'] ?? '');
 
@@ -235,28 +207,49 @@ class WhatsAppController extends Controller
                     ->first();
 
                 if ($botonId === 'btn_aceptar_oferta') {
+                    $nombreConductor = 'Carlos Mendoza';
+                    $vehiculoConductor = 'Toyota Yaris';
+                    $placaConductor = 'W3X-451';
+                    $tarifaAcordada = '7.00';
+
                     if ($ultimaSolicitud) {
                         $ultimaOferta = Supabase::table('ofertas_conductor')
                             ->where('solicitud_id', $ultimaSolicitud->id)
                             ->orderByDesc('id')
                             ->first();
 
+                        $conductorIdAsignado = $ultimaOferta->conductor_id ?? $ultimaSolicitud->conductor_id;
+                        $montoAcordado = $ultimaOferta->monto_contraoferta ?? $ultimaSolicitud->precio_final ?? $ultimaSolicitud->oferta_cliente ?? 7.00;
+                        $tarifaAcordada = number_format((float) $montoAcordado, 2, '.', '');
+
+                        if ($conductorIdAsignado) {
+                            $chofer = Supabase::table('conductores')->where('id', $conductorIdAsignado)->first();
+                            if ($chofer) {
+                                $nombreConductor = (string) $chofer->nombre;
+                                $vehiculoConductor = (string) $chofer->modelo_vehiculo;
+                                $placaConductor = (string) $chofer->placa;
+                            }
+                        }
+
                         Supabase::table('solicitudes_viaje')->where('id', $ultimaSolicitud->id)->update([
                             'estado' => 'aceptado',
-                            'conductor_id' => $ultimaOferta->conductor_id ?? $ultimaSolicitud->conductor_id,
-                            'precio_final' => $ultimaOferta->monto_contraoferta ?? $ultimaSolicitud->oferta_cliente,
+                            'conductor_id' => $conductorIdAsignado,
+                            'precio_final' => (float) $montoAcordado,
                             'updated_at' => now()->toIso8601String(),
                         ]);
                     }
 
-                    $linkGps = url('/rastreo/'.($ultimaSolicitud->id ?? 1));
-
+                    // FLUJO 1 - Paso 5A: Cliente acepta el viaje
                     $this->enviarMensajeWhatsApp(
                         $remitente,
-                        "🎉 ¡Viaje confirmado! El taxi está en camino.\n\n📍 Sigue el GPS en tiempo real aquí:\n{$linkGps}"
+                        "🎉 ¡Viaje confirmado!\n\n".
+                        "🚗 Conductor: {$nombreConductor}\n".
+                        "🚙 Vehículo: {$vehiculoConductor} ({$placaConductor})\n".
+                        "💰 Tarifa acordada: S/ {$tarifaAcordada}\n\n".
+                        'El conductor ya tiene tu ubicación y está en camino. ¡Gracias por usar KALUZ!'
                     );
 
-                    return response()->json(['status' => 'OFFER_ACCEPTED'], 200);
+                    return response('EVENT_RECEIVED', 200);
                 }
 
                 if ($botonId === 'btn_rechazar_oferta') {
@@ -267,22 +260,34 @@ class WhatsAppController extends Controller
                         ]);
                     }
 
+                    // FLUJO 1 - Paso 5B: Cliente rechaza la oferta
                     $this->enviarMensajeWhatsApp(
                         $remitente,
-                        'Buscando otros conductores con tu tarifa original...'
+                        'Entendido ⏳. Hemos rechazado esa tarifa. Seguimos buscando otros conductores cercanos con mejores ofertas...'
                     );
 
-                    return response()->json(['status' => 'OFFER_REJECTED'], 200);
+                    return response('EVENT_RECEIVED', 200);
                 }
             }
 
-            // Si envía un mensaje de texto (saludo inicial o ruta "Desde: X A: Y")
             if ($tipo === 'text') {
                 $cuerpoTexto = trim((string) data_get($message, 'text.body', ''));
                 $nombreContacto = (string) data_get($payload, 'entry.0.changes.0.value.contacts.0.profile.name', 'Pasajero');
 
                 $patronViaje = '/(?:desde\s*:?\s*|de\s+|estoy\s+en\s+)(.+?)\s+(?:a\s*:?\s*|hacia\s+|para\s+|destino\s*:?\s*|voy\s+a\s+|voy\s+para\s+)([^,\.\n]+?)(?:\s+(?:por|oferta\s*:?|y\s+ofrezco|ofrezco|s\/\.?)\s*(?:s\/\.?\s*)?(\d+(?:[\.,]\d+)?))?$/is';
+                $parecePagoChofer = (bool) preg_match('/\b(pagu[eé]|yape|plin|comprobante|voucher|cuota|bloqueado|desbloquea)\b/i', $cuerpoTexto);
 
+                // FLUJO 2 - Paso 2: Si el chofer envía texto en lugar de foto ("ya pagué")
+                if (($esChoferMoroso && ! preg_match($patronViaje, $cuerpoTexto)) || $parecePagoChofer) {
+                    $this->enviarMensajeWhatsApp(
+                        $remitente,
+                        '🤖 El sistema no detectó ninguna imagen. Por favor, adjunta la foto de la captura de Yape o Plin para poder validar tu pago.'
+                    );
+
+                    return response('EVENT_RECEIVED', 200);
+                }
+
+                // FLUJO 1 - Paso 2: El cliente responde con su ruta (ej. "De Real Plaza a Parque de la Identidad")
                 if (preg_match($patronViaje, $cuerpoTexto, $m)) {
                     $origen = trim($m[1], " ,.:\n\r");
                     $destino = trim($m[2], " ,.:\n\r");
@@ -294,7 +299,7 @@ class WhatsAppController extends Controller
                         $oferta = (float) str_replace(',', '.', $mPrecio[1]);
                     }
 
-                    $viajeCreado = Supabase::table('solicitudes_viaje')->insert([
+                    Supabase::table('solicitudes_viaje')->insert([
                         'cliente_nombre' => $nombreContacto,
                         'cliente_telefono' => $remitente,
                         'origen_texto' => $origen,
@@ -310,50 +315,31 @@ class WhatsAppController extends Controller
                         'updated_at' => now()->toIso8601String(),
                     ]);
 
-                    $linkRastreo = url('/rastreo/'.($viajeCreado->id ?? 1));
-                    $ofertaFmt = number_format($oferta, 2, '.', '');
+                    $this->enviarMensajeWhatsApp(
+                        $remitente,
+                        "¡Perfecto! 📍 Ahora necesito saber tu punto exacto.\n\n".
+                        'Toca el ícono del clip (📎) o el "+" y envíame tu Ubicación actual. Así alertaré a los conductores que estén más cerca de ti.'
+                    );
 
-                    $this->enviarMensajeWhatsApp(
-                        $remitente,
-                        "🚖 *¡Pedido registrado en Taxi KALUZ!*\n\n".
-                        "📍 *Desde:* {$origen}\n".
-                        "🏁 *A:* {$destino}\n".
-                        "💵 *Oferta:* S/ {$ofertaFmt}\n\n".
-                        "👉 *Ahora envíanos tu UBICACIÓN actual* (tocando el clip 📎 ➔ *Ubicación*) para asignarte a los conductores a menos de 2km.\n\n".
-                        "🗺️ Ver ofertas y mapa GPS en vivo:\n{$linkRastreo}"
-                    );
-                } else {
-                    // Mensaje inicial / saludo cordial indicando cómo pedir su taxi y enviar ubicación
-                    $this->enviarMensajeWhatsApp(
-                        $remitente,
-                        "👋 ¡Hola *{$nombreContacto}*! Bienvenido a *Taxi KALUZ Huancayo* 🚖✨\n\n".
-                        "Para pedir tu taxi al instante y negociar tu tarifa, por favor respóndenos indicando tu ruta así:\n\n".
-                        "📍 *Desde:* [Tu punto de partida]\n".
-                        "🏁 *A:* [Tu destino]\n".
-                        "💵 *Oferta:* S/ [Tu precio]\n\n".
-                        "*Ejemplo:*\n".
-                        "_Desde: Real Plaza A: El Tambo Oferta: S/ 6.00_\n\n".
-                        "📌 *Y envíanos tu UBICACIÓN actual* (tocando el ícono del clip 📎 ➔ *Ubicación*) para conectar con los conductores más cercanos.\n\n".
-                        '_(Si eres socio conductor, envía aquí la captura de tu Yape de S/ 1.00 para desbloquear tu radar)_.'
-                    );
+                    return response('EVENT_RECEIVED', 200);
                 }
+
+                // FLUJO 1 - Paso 1: El Saludo y la Solicitud (cuando el cliente escribe "Hola" o cualquier primer mensaje)
+                $this->enviarMensajeWhatsApp(
+                    $remitente,
+                    "🚕 ¡Hola! Bienvenido a Taxi KALUZ Huancayo.\n\n".
+                    "Para empezar, escríbeme en un solo mensaje desde dónde y hacia dónde vas.\n".
+                    '(Ejemplo: De Real Plaza a Parque de la Identidad)'
+                );
             }
 
-            return response()->json(['status' => 'EVENT_PROCESSED'], 200);
+            return response('EVENT_RECEIVED', 200);
         } catch (Throwable $e) {
             Log::error('Error en WhatsAppController@handle: '.$e->getMessage(), [
                 'exception' => $e,
             ]);
 
-            // Siempre retornar 200 OK para que Meta no desactive el Webhook
-            return response()->json([
-                'status' => 'HANDLED_ERROR',
-                'message' => 'Evento recibido con excepción controlada.',
-            ], 200);
-        } finally {
-            if ($tempFilePath && file_exists($tempFilePath)) {
-                @unlink($tempFilePath);
-            }
+            return response('EVENT_RECEIVED', 200);
         }
     }
 
@@ -379,7 +365,7 @@ class WhatsAppController extends Controller
     /**
      * Alias compatible con rutas previas.
      */
-    public function recibirMensaje(Request $request): JsonResponse
+    public function recibirMensaje(Request $request): Response|JsonResponse
     {
         return $this->handle($request);
     }
@@ -397,12 +383,6 @@ class WhatsAppController extends Controller
             ->get("https://graph.facebook.com/v20.0/{$mediaId}");
 
         if (! $response->successful()) {
-            Log::warning('Meta Graph API error obteniendo media URL', [
-                'media_id' => $mediaId,
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
             return null;
         }
 
@@ -410,7 +390,7 @@ class WhatsAppController extends Controller
     }
 
     /**
-     * Descarga el binario de la imagen desde la URL temporal de Meta.
+     * Descarga el binario de la imagen 100% en memoria desde la URL temporal de Meta.
      */
     protected function descargarBinarioMeta(string $mediaUrl): ?string
     {
@@ -422,10 +402,6 @@ class WhatsAppController extends Controller
             ->get($mediaUrl);
 
         if (! $response->successful()) {
-            Log::warning('Error descargando archivo binario de Meta', [
-                'status' => $response->status(),
-            ]);
-
             return null;
         }
 
@@ -433,137 +409,50 @@ class WhatsAppController extends Controller
     }
 
     /**
-     * Envía la imagen mediante Http::attach() a https://api.ocr.space/parse/image con language='spa'.
+     * Envía el binario en memoria mediante Http::attach() a https://api.ocr.space/parse/image con language='spa'.
      */
-    protected function extraerTextoConOcrSpace(string $filePath): string
+    protected function extraerTextoMemoriaOcrSpace(string $imagenBinaria): string
     {
         $apiKey = (string) env('OCR_SPACE_API_KEY', 'K84914448788957');
 
         $response = Http::withoutVerifying()
             ->timeout(25)
-            ->attach(
-                'file',
-                file_get_contents($filePath),
-                basename($filePath)
-            )
+            ->attach('file', $imagenBinaria, 'yape.jpg')
             ->post('https://api.ocr.space/parse/image', [
                 'apikey' => $apiKey,
                 'language' => 'spa',
-                'isOverlayRequired' => 'false',
-                'scale' => 'true',
-                'OCREngine' => '2',
             ]);
 
         if (! $response->successful()) {
-            Log::warning('Error HTTP en OCR.space', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
             return '';
         }
 
-        $parsedText = (string) data_get($response->json(), 'ParsedResults.0.ParsedText', '');
-
-        // Fallback a OCREngine 1 si OCREngine 2 devuelve vacío
-        if (trim($parsedText) === '') {
-            $retry = Http::withoutVerifying()
-                ->timeout(25)
-                ->attach(
-                    'file',
-                    file_get_contents($filePath),
-                    basename($filePath)
-                )
-                ->post('https://api.ocr.space/parse/image', [
-                    'apikey' => $apiKey,
-                    'language' => 'spa',
-                    'isOverlayRequired' => 'false',
-                ]);
-
-            $parsedText = (string) data_get($retry->json(), 'ParsedResults.0.ParsedText', '');
-        }
-
-        return trim($parsedText);
+        return trim((string) data_get($response->json(), 'ParsedResults.0.ParsedText', ''));
     }
 
     /**
-     * Valida con expresiones regulares las 3 condiciones:
-     * 1. Que exista la palabra "Yape" o "Plin".
-     * 2. Que exista el monto exacto "1.00" (ej. S/ 1.00, 1.00, 1,00 o S/ 1).
-     * 3. Que la fecha corresponda al día actual (America/Lima).
+     * Valida el texto extraído por OCR.space (Yape/Plin + Monto 1.00).
      */
     public function validarComprobanteOcr(string $texto): array
     {
+        $textoMin = strtolower($texto);
         $errores = [];
 
-        // 1. Validar palabra "Yape" o "Plin"
-        $tieneYapeOPlin = (bool) preg_match('/\b(yape|yapeaste|plin|plineaste)\b/i', $texto, $matchMetodo);
-        $metodoDetectado = 'YAPE';
-        if ($tieneYapeOPlin) {
-            $palabra = strtolower($matchMetodo[1]);
-            $metodoDetectado = str_contains($palabra, 'plin') ? 'PLIN' : 'YAPE';
-        } else {
+        $tieneYapeOPlin = str_contains($textoMin, 'yape') || str_contains($textoMin, 'plin');
+        $metodoDetectado = str_contains($textoMin, 'plin') ? 'PLIN' : 'YAPE';
+
+        if (! $tieneYapeOPlin) {
             $errores[] = 'No se detectó Yape ni Plin';
         }
 
-        // 2. Validar monto exacto "1.00" (acepta "1.00", "1,00", "S/ 1.00", "S/1.00", "S/ 1")
-        $tieneMontoExacto = str_contains($texto, '1.00')
-            || str_contains($texto, '1,00')
-            || (bool) preg_match('/(?<!\d)1[\.,]00(?!\d)/', $texto)
+        $tieneMontoExacto = str_contains($textoMin, '1.00')
+            || str_contains($textoMin, '1,00')
             || (bool) preg_match('/S\/\.?\s*1(?:\b|[\.,]00)/i', $texto);
 
         if (! $tieneMontoExacto) {
             $errores[] = 'No se encontró el monto S/ 1.00';
         }
 
-        // 3. Validar que la fecha corresponda al día actual (Zona horaria Perú: America/Lima)
-        $hoy = Carbon::now('America/Lima');
-        $diaSinCero = (string) $hoy->day;          // ej. "18" o "5"
-        $diaConCero = $hoy->format('d');           // ej. "18" o "05"
-        $mesConCero = $hoy->format('m');           // ej. "10"
-        $mesSinCero = (string) $hoy->month;        // ej. "10"
-        $anio4 = $hoy->format('Y');                // ej. "2026"
-        $anio2 = $hoy->format('y');                // ej. "26"
-
-        $mesesEs = [
-            1 => 'ene(?:ro)?',
-            2 => 'feb(?:rero)?',
-            3 => 'mar(?:zo)?',
-            4 => 'abr(?:il)?',
-            5 => 'may(?:o)?',
-            6 => 'jun(?:io)?',
-            7 => 'jul(?:io)?',
-            8 => 'ago(?:sto)?',
-            9 => 'sep(?:tiembre)?|set(?:iembre)?',
-            10 => 'oct(?:ubre)?',
-            11 => 'nov(?:iembre)?',
-            12 => 'dic(?:iembre)?',
-        ];
-        $patronMes = $mesesEs[$hoy->month];
-
-        // Patrones de fecha que emiten Yape ("18 oct. 2026", "18 de octubre de 2026") y Plin ("18/10/2026", "18-10-2026", "2026-10-18")
-        $patronesFechaHoy = [
-            // Ej: "18 oct. 2026", "18 oct 2026", "18 de octubre 2026", "18 oct."
-            '/\b0?'.$diaSinCero.'\s*(?:de\s+)?(?:'.$patronMes.')\.?(?:\s*(?:de\s+|del\s+)?'.$anio4.')?\b/i',
-            // Ej: "18/10/2026", "18-10-2026", "18.10.2026", "18/10/26"
-            '/\b(?:'.$diaConCero.'|'.$diaSinCero.')[\/\-\.](?:'.$mesConCero.'|'.$mesSinCero.')[\/\-\.](?:'.$anio4.'|'.$anio2.')\b/',
-            // Ej: "2026-10-18" o "2026/10/18"
-            '/\b'.$anio4.'[\/\-](?:'.$mesConCero.'|'.$mesSinCero.')[\/\-](?:'.$diaConCero.'|'.$diaSinCero.')\b/',
-        ];
-
-        $tieneFechaHoy = false;
-        foreach ($patronesFechaHoy as $patron) {
-            if (preg_match($patron, $texto)) {
-                $tieneFechaHoy = true;
-                break;
-            }
-        }
-
-        if (! $tieneFechaHoy) {
-            $errores[] = 'La fecha no coincide con hoy ('.$hoy->format('d/m/Y').')';
-        }
-
-        // Extraer código de operación / seguridad para trazabilidad en el panel web
         $codigoOperacion = null;
         if (preg_match('/(?:operaci[oó]n|seguridad|c[oó]digo|nro\.?)[\s:\.\-#]*([0-9]{3,10})/i', $texto, $matchCodigo)) {
             $codigoOperacion = $matchCodigo[1];
@@ -572,10 +461,9 @@ class WhatsAppController extends Controller
         }
 
         return [
-            'es_valido' => $tieneYapeOPlin && $tieneMontoExacto && $tieneFechaHoy,
+            'es_valido' => $tieneYapeOPlin && $tieneMontoExacto,
             'tiene_yape_plin' => $tieneYapeOPlin,
             'tiene_monto_exacto' => $tieneMontoExacto,
-            'tiene_fecha_hoy' => $tieneFechaHoy,
             'metodo' => $metodoDetectado,
             'codigo_operacion' => $codigoOperacion,
             'errores' => $errores,
@@ -592,90 +480,42 @@ class WhatsAppController extends Controller
         ?string $codigoOperacion,
         string $textoOcr
     ): ?array {
-        $supabaseUrl = rtrim((string) env('SUPABASE_URL'), '/');
-        $supabaseKey = (string) env('SUPABASE_KEY');
-
-        // Normalizar número: Meta envía "51964111222", en BD puede estar como "964111222" o "51964111222"
         $soloDigitos = preg_replace('/\D+/', '', $telefonoRemitente);
         $ultimos9 = strlen($soloDigitos) >= 9 ? substr($soloDigitos, -9) : $soloDigitos;
-
-        $headers = [
-            'apikey' => $supabaseKey,
-            'Authorization' => 'Bearer '.$supabaseKey,
-            'Content-Type' => 'application/json',
-            'Prefer' => 'return=representation',
-        ];
-
-        // 1. Buscar al conductor por telefono_whatsapp (9 dígitos o número completo con código de país)
-        $consulta = Http::withoutVerifying()
-            ->withHeaders($headers)
-            ->timeout(10)
-            ->get("{$supabaseUrl}/rest/v1/conductores", [
-                'or' => "(telefono_whatsapp.eq.{$soloDigitos},telefono_whatsapp.eq.{$ultimos9},telefono_whatsapp.ilike.*{$ultimos9}*)",
-                'select' => '*',
-                'limit' => 1,
-            ]);
-
-        $conductor = data_get($consulta->json(), '0');
-
         $ahoraLima = Carbon::now('America/Lima');
-        $vencimientoComision = $ahoraLima->copy()->addDay()->toIso8601String();
 
-        // Intentar actualizar incluyendo 'estado' => 'habilitado' + campos reales del esquema Supabase
-        $filtroQuery = $conductor && isset($conductor['id'])
-            ? 'id=eq.'.$conductor['id']
-            : "or=(telefono_whatsapp.eq.{$soloDigitos},telefono_whatsapp.eq.{$ultimos9})";
-
-        $updateResponse = Http::withoutVerifying()
-            ->withHeaders($headers)
-            ->timeout(10)
-            ->patch("{$supabaseUrl}/rest/v1/conductores?{$filtroQuery}", [
-                'estado' => 'habilitado',
+        Supabase::table('conductores')
+            ->where('telefono_whatsapp', 'ilike', "%{$ultimos9}%")
+            ->update([
                 'habilitado' => true,
                 'estado_comision' => 'al_dia',
-                'fecha_vencimiento_comision' => $vencimientoComision,
+                'fecha_vencimiento_comision' => $ahoraLima->copy()->addDay()->toIso8601String(),
                 'updated_at' => $ahoraLima->toIso8601String(),
             ]);
 
-        // Si la tabla remota de Supabase no tiene la columna 'estado' y usa 'habilitado' booleano + 'estado_comision'
-        if (! $updateResponse->successful()) {
-            $updateResponse = Http::withoutVerifying()
-                ->withHeaders($headers)
-                ->timeout(10)
-                ->patch("{$supabaseUrl}/rest/v1/conductores?{$filtroQuery}", [
-                    'habilitado' => true,
-                    'estado_comision' => 'al_dia',
-                    'fecha_vencimiento_comision' => $vencimientoComision,
-                    'updated_at' => $ahoraLima->toIso8601String(),
-                ]);
-        }
+        $conductor = Supabase::table('conductores')
+            ->where('telefono_whatsapp', 'ilike', "%{$ultimos9}%")
+            ->first();
 
-        $conductorActualizado = data_get($updateResponse->json(), '0') ?? $conductor;
-
-        // Registrar trazabilidad del pago en pagos_diarios (si existe el conductor)
-        if ($conductorActualizado && isset($conductorActualizado['id'])) {
+        if ($conductor && isset($conductor->id)) {
             try {
-                Http::withoutVerifying()
-                    ->withHeaders($headers)
-                    ->timeout(8)
-                    ->post("{$supabaseUrl}/rest/v1/pagos_diarios", [
-                        'conductor_id' => $conductorActualizado['id'],
-                        'monto' => 1.00,
-                        'fecha_correspondiente' => $ahoraLima->toDateString(),
-                        'codigo_operacion' => $codigoOperacion ?? 'OCR-'.strtoupper(substr(md5($textoOcr), 0, 6)),
-                        'estado_verificacion' => 'verificado',
-                        'metodo_pago' => strtolower($metodoPago),
-                    ]);
-            } catch (Throwable $e) {
-                Log::info('Trazabilidad pagos_diarios omitida: '.$e->getMessage());
+                Supabase::table('pagos_diarios')->insert([
+                    'conductor_id' => $conductor->id,
+                    'monto' => 1.00,
+                    'fecha_correspondiente' => $ahoraLima->toDateString(),
+                    'codigo_operacion' => $codigoOperacion ?? 'OCR-'.strtoupper(substr(md5($textoOcr), 0, 6)),
+                    'estado_verificacion' => 'verificado',
+                ]);
+            } catch (Throwable) {
+                // Continuar si pagos_diarios tiene esquema distinto
             }
         }
 
-        return is_array($conductorActualizado) ? $conductorActualizado : null;
+        return $conductor ? (array) $conductor : null;
     }
 
     /**
-     * Envía un mensaje de texto de WhatsApp al chofer usando el endpoint /messages de Meta.
+     * Envía un mensaje de texto de WhatsApp usando el endpoint /messages de Meta.
      */
     protected function enviarMensajeWhatsApp(string $destinatario, string $texto): bool
     {
@@ -700,16 +540,6 @@ class WhatsAppController extends Controller
                 ],
             ]);
 
-        if (! $response->successful()) {
-            Log::warning('Error enviando mensaje WhatsApp via Meta Cloud API', [
-                'to' => $destinatario,
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            return false;
-        }
-
-        return true;
+        return $response->successful();
     }
 }

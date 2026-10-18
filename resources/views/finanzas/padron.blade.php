@@ -387,13 +387,22 @@
                         </button>
                     </form>
 
-                    <!-- Notificaciones por WhatsApp (Pago o Vencimiento de Documento) -->
+                    <!-- Notificaciones por WhatsApp (Flujo 2 Paso 1: Cobro Matutino Bot Meta + Enlace Directo) -->
                     <div class="pt-2 border-t border-slate-100 space-y-2">
+                        <form :action="'/finanzas/conductor/' + seleccionado.id + '/cobro-whatsapp'" method="POST">
+                            @csrf
+                            <button type="submit"
+                                class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-headline font-bold text-xs py-2.5 px-3 rounded-xl shadow-xs transition flex items-center justify-center gap-1.5">
+                                <i class="ri-robot-2-line text-sm"></i>
+                                <span>Disparar Cobro S/ 1.00 por Bot WhatsApp</span>
+                            </button>
+                        </form>
+
                         <a :href="'https://wa.me/51' + seleccionado.telefono.replace(/\D/g, '') + '?text=' + encodeURIComponent('Hola ' + seleccionado.nombre + ', te escribimos de Taxi KALUZ. Recuerda enviar la foto de tu SOAT/Revisión Técnica renovada o regularizar tu cuota diaria de S/ 1.00 para mantener tu radar activo.')"
                            target="_blank"
                            class="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-xs py-2.5 px-3 rounded-xl transition flex items-center justify-center gap-1.5">
                             <i class="ri-whatsapp-line text-base text-emerald-600"></i>
-                            <span>Enviar Alerta por WhatsApp</span>
+                            <span>Abrir Chat Directo WhatsApp</span>
                         </a>
                     </div>
                 </div>
