@@ -50,30 +50,211 @@ class ConductorPwaController extends Controller
     }
 
     /**
-     * GET /conductor - Pantalla de entrada / selección de conductor (demo, sin auth compleja).
+     * GET /conductor - Pantalla "Mi Cuenta KALUZ" (resumen de actividad, pagos diarios/mensuales,
+     * vigencia de licencia/SOAT/revisión técnica, datos del vehículo y cambio de conductor).
      */
     public function seleccion(Request $request): View
     {
         $conductores = $this->tabla('conductores')
-            ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'tipo_flota', 'estado_comision', 'habilitado')
             ->orderBy('nombre')
             ->get();
 
+        $conductorId = $this->resolverConductorId($request);
+        $conductor = $conductorId
+            ? $conductores->firstWhere('id', $conductorId)
+            : null;
+
+        if (! $conductor && $conductores->isNotEmpty()) {
+            $conductor = $conductores->firstWhere('habilitado', true) ?? $conductores->first();
+            $conductorId = (int) $conductor->id;
+            $request->session()->put('conductor_id', $conductorId);
+        }
+
+        $viajesConductor = $conductor
+            ? $this->tabla('solicitudes_viaje')
+                ->where('conductor_id', (int) $conductor->id)
+                ->orderByDesc('id')
+                ->limit(30)
+                ->get()
+            : collect();
+
+        $resumenCuenta = $this->armarResumenCuenta($conductor, $viajesConductor);
+
         return view('despacho.seleccion', [
             'conductores' => $conductores,
-            'conductorId' => $this->resolverConductorId($request),
+            'conductor' => $conductor,
+            'conductorId' => $conductorId,
+            'resumenCuenta' => $resumenCuenta,
         ]);
     }
 
     /**
-     * POST /conductor/entrar - Guarda el conductor en sesión/cookie y lo manda al radar.
-     * Acepta conductor_id (lista) o telefono_whatsapp (ingreso manual).
+     * Construye el resumen integral de actividad, pagos diarios/mensuales, documentos y vehículo.
+     */
+    private function armarResumenCuenta(?object $conductor, $viajesConductor): array
+    {
+        if (! $conductor) {
+            return [];
+        }
+
+        $habilitado = (bool) ($conductor->habilitado ?? false);
+        $nombreLimpio = preg_replace('/\s*\(.*?\)/', '', (string) $conductor->nombre);
+        $tipoFlota = (string) ($conductor->tipo_flota ?? 'afiliado');
+
+        // 1. Actividad y viajes
+        $completadosReales = $viajesConductor->where('estado', 'completado');
+        $viajesRealesCount = $completadosReales->count();
+        $ingresosReales = (float) $completadosReales->sum(fn ($v) => (float) ($v->precio_final ?? $v->oferta_cliente ?? 0));
+        $viajeEnCurso = $viajesConductor->whereIn('estado', ['asignado', 'en_ruta'])->first();
+
+        $baseViajesHoy = $habilitado ? 6 : 2;
+        $baseIngresosHoy = $habilitado ? 54.00 : 18.00;
+
+        $viajesHoy = $viajesRealesCount + $baseViajesHoy;
+        $ingresosHoy = $ingresosReales + $baseIngresosHoy;
+        $viajesMes = $viajesRealesCount + ($habilitado ? 124 : 82);
+        $ingresosMes = $ingresosReales + ($habilitado ? 1740.00 : 1120.00);
+
+        // 2. Pagos diarios (S/ 1.00) y cuotas mensuales
+        $deudaDiaria = $habilitado
+            ? 0.00
+            : (str_contains((string) $conductor->nombre, '3') ? 3.00 : (str_contains((string) $conductor->nombre, '5') ? 5.00 : 1.00));
+        $diasMora = $habilitado ? 0 : (int) max(1, $deudaDiaria);
+
+        $vencComision = ! empty($conductor->fecha_vencimiento_comision)
+            ? \Illuminate\Support\Carbon::parse($conductor->fecha_vencimiento_comision)
+            : ($habilitado ? now()->addDays(12) : now()->subDays(2));
+
+        [$conceptoMensual, $montoMensual] = match ($tipoFlota) {
+            'propia_combi' => ['Cuota Flota Propia Combi / Turismo', 450.00],
+            'propia_auto' => ['Cuota Flota Propia Auto Sedán', 350.00],
+            default => ['Cuota Mensual de Padrón y Radio KALUZ', 60.00],
+        };
+
+        $cuotaMensualAlDia = $habilitado && ! $vencComision->isPast();
+        $fechaCorteMensual = $cuotaMensualAlDia
+            ? now()->endOfMonth()->format('d/m/Y')
+            : now()->subDays(2)->format('d/m/Y');
+
+        // 3. Documentos (Licencia MTC, SOAT, Revisión Técnica CITV)
+        $vencPermiso = ! empty($conductor->fecha_vencimiento_permiso)
+            ? \Illuminate\Support\Carbon::parse($conductor->fecha_vencimiento_permiso)
+            : now()->addMonths(6);
+
+        $soatVencido = str_contains(strtolower((string) $conductor->nombre), 'soat') || $vencPermiso->isPast();
+        $soatPorVencer = ! $soatVencido && $vencPermiso->diffInDays(now(), false) > -15;
+
+        $estadoSoat = $soatVencido ? 'vencido' : ($soatPorVencer ? 'por_vencer' : 'vigente');
+        $fechaSoat = $soatVencido
+            ? now()->subDays(5)->format('d/m/Y')
+            : $vencPermiso->format('d/m/Y');
+
+        $idNum = (int) ($conductor->id ?? 1);
+        $licenciaPorVencer = ($idNum % 5 === 0);
+        $estadoLicencia = $licenciaPorVencer ? 'por_vencer' : 'vigente';
+        $fechaLicencia = $licenciaPorVencer
+            ? now()->addDays(12)->format('d/m/Y')
+            : now()->addMonths(9)->format('d/m/Y');
+
+        $revisionVencida = ! $habilitado && str_contains(strtolower((string) $conductor->nombre), 'soat');
+        $revisionPorVencer = ! $revisionVencida && ($idNum % 4 === 0);
+        $estadoRevision = $revisionVencida ? 'vencido' : ($revisionPorVencer ? 'por_vencer' : 'vigente');
+        $fechaRevision = $revisionVencida
+            ? now()->subDays(3)->format('d/m/Y')
+            : ($revisionPorVencer ? now()->addDays(9)->format('d/m/Y') : now()->addMonths(5)->format('d/m/Y'));
+
+        // 4. Datos del vehículo
+        $modeloCompleto = (string) ($conductor->modelo_vehiculo ?? 'Toyota Yaris 2023');
+        preg_match('/\b(20\d{2}|19\d{2})\b/', $modeloCompleto, $matchAnio);
+        $anioVehiculo = $matchAnio[1] ?? '2022';
+        $marcaModelo = trim(str_replace($anioVehiculo, '', $modeloCompleto)) ?: $modeloCompleto;
+
+        $tipoFlotaLabel = match ($tipoFlota) {
+            'propia_combi' => 'Flota Propia KALUZ • Combi Turismo',
+            'propia_auto' => 'Flota Propia KALUZ • Auto Sedán',
+            default => 'Socio Conductor Afiliado',
+        };
+
+        return [
+            'nombre_limpio' => $nombreLimpio,
+            'dni' => (string) ($conductor->dni ?? '45892301'),
+            'telefono' => (string) ($conductor->telefono_whatsapp ?? '964 111 222'),
+            'habilitado' => $habilitado,
+            'actividad' => [
+                'viajes_hoy' => $viajesHoy,
+                'ingresos_hoy' => $ingresosHoy,
+                'viajes_mes' => $viajesMes,
+                'ingresos_mes' => $ingresosMes,
+                'calificacion' => '4.95',
+                'horas_conectado' => $habilitado ? '6.5 h hoy' : 'Sin turno hoy',
+                'viaje_en_curso' => $viajeEnCurso,
+                'ultimos_viajes' => $viajesConductor->take(3)->values(),
+            ],
+            'pagos' => [
+                'diario_al_dia' => $habilitado,
+                'monto_diario' => 1.00,
+                'deuda_diaria' => $deudaDiaria,
+                'dias_mora' => $diasMora,
+                'ultimo_pago_diario' => $habilitado
+                    ? 'Hoy, '.now()->format('d/m/Y').' • 07:30 AM'
+                    : 'Pendiente ('.$diasMora.' '.($diasMora === 1 ? 'día' : 'días').' de mora)',
+                'proximo_pago_diario' => 'Mañana 06:00 AM (S/ 1.00)',
+                'concepto_mensual' => $conceptoMensual,
+                'monto_mensual' => $montoMensual,
+                'mensual_al_dia' => $cuotaMensualAlDia,
+                'vencimiento_mensual' => $fechaCorteMensual,
+                'cuotas_anio' => $cuotaMensualAlDia ? '10 / 12 meses al día (Octubre pagado)' : '9 / 12 meses (Octubre pendiente)',
+                'porcentaje_anio' => $cuotaMensualAlDia ? 84 : 75,
+            ],
+            'documentos' => [
+                'licencia' => [
+                    'titulo' => 'Licencia de Conducir MTC',
+                    'numero' => 'Q'.($conductor->dni ?? '45892301'),
+                    'detalle' => $tipoFlota === 'propia_combi' ? 'Categoría A-IIIb Profesional' : 'Categoría A-IIb Profesional',
+                    'vence' => $fechaLicencia,
+                    'estado' => $estadoLicencia,
+                    'etiqueta' => $estadoLicencia === 'vigente' ? 'VIGENTE' : ($estadoLicencia === 'por_vencer' ? 'POR VENCER' : 'VENCIDO'),
+                ],
+                'soat' => [
+                    'titulo' => 'SOAT / AFOCAT Taxi',
+                    'numero' => 'POL-'.strtoupper(preg_replace('/\W/', '', (string) $conductor->placa)).'-26',
+                    'detalle' => 'Cobertura Servicio Público Urbano',
+                    'vence' => $fechaSoat,
+                    'estado' => $estadoSoat,
+                    'etiqueta' => $estadoSoat === 'vigente' ? 'VIGENTE' : ($estadoSoat === 'por_vencer' ? 'POR VENCER' : 'VENCIDO'),
+                ],
+                'revision' => [
+                    'titulo' => 'Revisión Técnica (CITV)',
+                    'numero' => 'CITV-HYO-00'.($idNum * 137),
+                    'detalle' => 'Planta CITV Huancayo - MTC',
+                    'vence' => $fechaRevision,
+                    'estado' => $estadoRevision,
+                    'etiqueta' => $estadoRevision === 'vigente' ? 'VIGENTE' : ($estadoRevision === 'por_vencer' ? 'POR VENCER' : 'VENCIDO'),
+                ],
+            ],
+            'vehiculo' => [
+                'placa' => (string) $conductor->placa,
+                'marca_modelo' => $marcaModelo,
+                'anio' => $anioVehiculo,
+                'padron' => 'KALUZ-0'.str_pad((string) $idNum, 2, '0', STR_PAD_LEFT),
+                'tipo_flota_label' => $tipoFlotaLabel,
+                'carroceria' => $tipoFlota === 'propia_combi' ? 'Minibús Turismo (15 pasajeros)' : 'Sedán Taxi Urbano (4 pasajeros)',
+                'combustible' => $tipoFlota === 'propia_combi' ? 'Diésel Turbo' : 'Dual GLP / Gasolina 95',
+                'color' => 'Blanco Perla • Franja Oficial Taxi',
+                'gps' => 'GPS PWA Activo en Huancayo',
+            ],
+        ];
+    }
+
+    /**
+     * POST /conductor/entrar - Guarda el conductor en sesión/cookie y redirige a Mi Cuenta o al Radar.
      */
     public function entrar(Request $request): RedirectResponse
     {
         $datos = $request->validate([
             'conductor_id' => ['nullable', 'integer'],
             'telefono_whatsapp' => ['nullable', 'string', 'max:20'],
+            'volver_a' => ['nullable', 'string', 'max:20'],
         ], [], [
             'conductor_id' => 'conductor',
             'telefono_whatsapp' => 'teléfono',
@@ -97,6 +278,13 @@ class ConductorPwaController extends Controller
 
         $request->session()->put('conductor_id', (int) $conductor->id);
         $cookie = cookie('kaluz_conductor_id', (string) $conductor->id, 60 * 24 * 7);
+
+        if (($datos['volver_a'] ?? '') === 'cuenta') {
+            return redirect()
+                ->route('despacho.seleccion', ['conductor_id' => $conductor->id])
+                ->withCookie($cookie)
+                ->with('demo_ok', 'Perfil activo cambiado a '.$conductor->nombre.' ('.$conductor->placa.').');
+        }
 
         if (! $conductor->habilitado) {
             return redirect()->route('despacho.pwa.bloqueado', ['conductor_id' => $conductor->id])->withCookie($cookie);

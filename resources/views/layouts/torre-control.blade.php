@@ -46,9 +46,9 @@
                     <span>Dashboard KPI</span>
                 </a>
 
-                <a href="{{ route('turismo.rastreo', ['id' => 1]) }}"
-                   class="flex items-center gap-3 py-2.5 px-3.5 rounded-xl transition {{ request()->is('rastreo*') || request()->is('track*') ? 'bg-[#132347] text-white font-semibold shadow-sm border border-white/10' : 'text-slate-300 hover:bg-white/5 hover:text-white' }}">
-                    <i class="ri-map-2-line text-lg {{ request()->is('rastreo*') || request()->is('track*') ? 'text-white' : 'text-slate-400' }}"></i>
+                <a href="{{ url('/dashboard#mapa-en-vivo') }}"
+                   class="flex items-center gap-3 py-2.5 px-3.5 rounded-xl transition text-slate-300 hover:bg-white/5 hover:text-white">
+                    <i class="ri-map-2-line text-lg text-emerald-400"></i>
                     <span>Mapa en Vivo</span>
                 </a>
 

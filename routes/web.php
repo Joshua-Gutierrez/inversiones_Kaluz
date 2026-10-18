@@ -200,18 +200,136 @@ Route::post('/login', function (Request $request) {
     return back()->withErrors(['error' => 'Usuario o contraseña incorrectos en Supabase.'])->withInput();
 });
 
+if (! function_exists('armarFlotaEnVivoKaluz')) {
+    /**
+     * Construye el estado GPS en tiempo real de toda la flota KALUZ cruzando conductores y viajes activos.
+     */
+    function armarFlotaEnVivoKaluz($conductores, $solicitudes): array
+    {
+        $geocodificador = app(\App\Services\Despacho\GeocodingService::class);
+
+        $viajesActivosPorConductor = $solicitudes
+            ->whereIn('estado', ['asignado', 'en_ruta'])
+            ->whereNotNull('conductor_id')
+            ->keyBy(fn ($s) => (int) $s->conductor_id);
+
+        // Puntos estratégicos de Huancayo para unidades que aún tienen la coordenada semilla por defecto
+        $puntosReferenciaHuancayo = [
+            [-12.0651, -75.2049], // Parque Constitución
+            [-12.0681, -75.2106], // Real Plaza Huancayo
+            [-12.0558, -75.2185], // El Tambo / Parque Bolognesi
+            [-12.0475, -75.1990], // Universidad Continental
+            [-12.0785, -75.2045], // Chilca
+            [-12.0540, -75.2280], // Terminal Terrestre
+            [-12.0583, -75.2015], // Parque de la Identidad
+            [-12.0630, -75.2130], // Open Plaza Huancayo
+        ];
+
+        return $conductores->values()->map(function ($c, $idx) use ($viajesActivosPorConductor, $puntosReferenciaHuancayo, $geocodificador) {
+            $id = (int) $c->id;
+            $habilitado = (bool) $c->habilitado;
+            $viaje = $viajesActivosPorConductor->get($id);
+
+            $latRaw = isset($c->lat_actual) ? (float) $c->lat_actual : null;
+            $lngRaw = isset($c->lng_actual) ? (float) $c->lng_actual : null;
+
+            $esCoordenadaDefaultRepetida = $idx > 0
+                && $latRaw !== null
+                && abs($latRaw - (-12.0651)) < 0.0001
+                && abs($lngRaw - (-75.2049)) < 0.0001;
+
+            if ($latRaw === null || $lngRaw === null || $esCoordenadaDefaultRepetida) {
+                $ref = $puntosReferenciaHuancayo[$idx % count($puntosReferenciaHuancayo)];
+                $lat = $ref[0];
+                $lng = $ref[1];
+            } else {
+                $lat = $latRaw;
+                $lng = $lngRaw;
+            }
+
+            $haceSegundos = ! empty($c->updated_at)
+                ? (int) max(0, now()->diffInSeconds(\Illuminate\Support\Carbon::parse($c->updated_at)))
+                : 120;
+
+            $pwaGpsActivo = $haceSegundos <= 600 || $viaje !== null || $habilitado;
+
+            $datosViaje = null;
+            if ($viaje) {
+                $coordOrigen = (! empty($viaje->origen_lat) && ! empty($viaje->origen_lng))
+                    ? ['lat' => (float) $viaje->origen_lat, 'lng' => (float) $viaje->origen_lng]
+                    : $geocodificador->coordenadas((string) $viaje->origen_texto);
+
+                $coordDestino = (! empty($viaje->destino_lat) && ! empty($viaje->destino_lng))
+                    ? ['lat' => (float) $viaje->destino_lat, 'lng' => (float) $viaje->destino_lng]
+                    : $geocodificador->coordenadas((string) $viaje->destino_texto);
+
+                $datosViaje = [
+                    'id' => (int) $viaje->id,
+                    'estado' => (string) $viaje->estado,
+                    'etiqueta' => $viaje->estado === 'en_ruta' ? 'EN RUTA AL DESTINO' : 'YENDO A RECOGER PASAJERO',
+                    'cliente_nombre' => (string) ($viaje->cliente_nombre ?: 'Pasajero WhatsApp'),
+                    'cliente_telefono' => (string) ($viaje->cliente_telefono ?? ''),
+                    'origen_texto' => (string) $viaje->origen_texto,
+                    'destino_texto' => (string) $viaje->destino_texto,
+                    'origen_lat' => (float) $coordOrigen['lat'],
+                    'origen_lng' => (float) $coordOrigen['lng'],
+                    'destino_lat' => (float) $coordDestino['lat'],
+                    'destino_lng' => (float) $coordDestino['lng'],
+                    'tarifa' => (float) ($viaje->precio_final ?? $viaje->oferta_cliente ?? 0),
+                    'url_rastreo' => url('/rastreo/'.$viaje->id),
+                ];
+            }
+
+            return [
+                'id' => $id,
+                'nombre' => preg_replace('/\s*\(.*?\)/', '', (string) $c->nombre),
+                'placa' => (string) $c->placa,
+                'modelo_vehiculo' => (string) $c->modelo_vehiculo,
+                'tipo_flota' => (string) ($c->tipo_flota ?? 'afiliado'),
+                'telefono' => (string) ($c->telefono_whatsapp ?? ''),
+                'habilitado' => $habilitado,
+                'en_servicio' => $viaje !== null,
+                'pwa_gps_activo' => $pwaGpsActivo,
+                'hace_segundos' => $haceSegundos,
+                'lat' => round($lat, 6),
+                'lng' => round($lng, 6),
+                'viaje' => $datosViaje,
+            ];
+        })->all();
+    }
+}
+
 Route::get('/dashboard', function () {
     $conductores = Supabase::table('conductores')->orderBy('id')->get();
-    $solicitudes = Supabase::table('solicitudes_viaje')->orderByDesc('created_at')->limit(12)->get();
+    $solicitudes = Supabase::table('solicitudes_viaje')->orderByDesc('id')->limit(25)->get();
 
     $conductorPorValidar = $conductores->firstWhere('habilitado', false) ?? $conductores->first();
+    $flotaEnVivo = armarFlotaEnVivoKaluz($conductores, $solicitudes);
 
     return view('dashboard', [
         'conductores' => $conductores,
         'solicitudes' => $solicitudes,
         'conductorPorValidar' => $conductorPorValidar,
+        'flotaEnVivo' => $flotaEnVivo,
     ]);
 })->name('dashboard');
+
+Route::get('/api/torre-control/flota', function () {
+    $conductores = Supabase::table('conductores')->orderBy('id')->get();
+    $solicitudes = Supabase::table('solicitudes_viaje')->orderByDesc('id')->limit(25)->get();
+    $flota = armarFlotaEnVivoKaluz($conductores, $solicitudes);
+
+    return response()->json([
+        'ok' => true,
+        'flota' => $flota,
+        'resumen' => [
+            'total_flota' => count($flota),
+            'en_viaje' => collect($flota)->where('en_servicio', true)->count(),
+            'en_radar_gps' => collect($flota)->where('habilitado', true)->where('en_servicio', false)->count(),
+            'bloqueados' => collect($flota)->where('habilitado', false)->count(),
+        ],
+    ]);
+})->name('dashboard.api.flota');
 
 Route::get('/general', function () {
     return view('general.index');

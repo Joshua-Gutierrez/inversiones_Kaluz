@@ -10,8 +10,10 @@
 @php
     $conductores = $conductores ?? collect();
     $solicitudes = $solicitudes ?? collect();
+    $flotaEnVivo = $flotaEnVivo ?? [];
     $totalHabilitados = $conductores->where('habilitado', true)->count();
     $viajesActivos = $solicitudes->whereIn('estado', ['pendiente', 'en_subasta', 'asignado', 'en_ruta'])->count();
+    $enServicioAhora = collect($flotaEnVivo)->where('en_servicio', true)->count();
     $recaudacion = max(128, $totalHabilitados * 1);
     $conductorYape = $conductorPorValidar ?? (object) [
         'id' => 1,
@@ -25,9 +27,14 @@
 <div class="space-y-4">
     <!-- Título Principal -->
     <div class="flex items-center justify-between">
-        <h1 class="font-headline font-extrabold text-2xl text-[#08142C] tracking-tight">
-            Torre de Control - KALUZ
-        </h1>
+        <div>
+            <h1 class="font-headline font-extrabold text-2xl text-[#08142C] tracking-tight">
+                Torre de Control - KALUZ
+            </h1>
+            <p class="text-xs text-slate-600 mt-0.5">
+                Monitoreo GPS en tiempo real de unidades haciendo servicio desde la PWA de Conductores
+            </p>
+        </div>
         @if (session('exito'))
             <div class="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-xs">
                 <i class="ri-checkbox-circle-fill text-emerald-600 text-sm"></i>
@@ -39,27 +46,29 @@
     <!-- Grid Principal: Izquierda (KPIs + Mapa GPS 8 cols) | Derecha (Validación Yape + Solicitudes WhatsApp 4 cols) -->
     <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
 
-        <!-- Columna Izquierda (8/12): 4 KPIs + Mapa en Vivo de Huancayo -->
+        <!-- Columna Izquierda (8/12): 4 KPIs + Mapa en Vivo de Huancayo + Panel de Unidades GPS -->
         <div class="xl:col-span-8 space-y-4">
-            <!-- 4 Tarjetas KPI (Idénticas a Imagen 3) -->
+            <!-- 4 Tarjetas KPI -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">
                 <!-- KPI 1: Viajes Activos -->
                 <div class="bg-white/95 rounded-2xl p-4 border border-white shadow-sm">
                     <p class="text-xs font-medium text-slate-600 leading-snug">Viajes Activos</p>
-                    <p class="font-headline font-black text-3xl text-[#08142C] mt-2">
-                        {{ $viajesActivos > 0 ? $viajesActivos + 40 : 42 }}
+                    <p id="kpi-viajes-activos" class="font-headline font-black text-3xl text-[#08142C] mt-2">
+                        {{ $viajesActivos > 0 ? $viajesActivos : 1 }}
                     </p>
                     <p class="text-[11px] text-emerald-600 font-semibold mt-1 flex items-center gap-1">
-                        <i class="ri-radar-line"></i> En tiempo real
+                        <i class="ri-radar-line"></i>
+                        <span id="kpi-en-servicio-label">{{ $enServicioAhora }} en carrera ahora</span>
                     </p>
                 </div>
 
                 <!-- KPI 2: Conductores Habilitados -->
                 <div class="bg-white/95 rounded-2xl p-4 border border-white shadow-sm">
-                    <p class="text-xs font-medium text-slate-600 leading-snug">Conductores<br>Habilitados</p>
-                    <p class="font-headline font-black text-3xl text-[#08142C] mt-1">
-                        {{ $totalHabilitados > 0 ? $totalHabilitados + 123 : 128 }}
+                    <p class="text-xs font-medium text-slate-600 leading-snug">Flota en Servicio<br>(GPS PWA Activo)</p>
+                    <p id="kpi-habilitados" class="font-headline font-black text-3xl text-[#08142C] mt-1">
+                        {{ $totalHabilitados }}
                     </p>
+                    <p class="text-[11px] text-slate-500 mt-0.5">De {{ $conductores->count() }} unidades registradas</p>
                 </div>
 
                 <!-- KPI 3: Recaudación Diaria -->
@@ -76,42 +85,141 @@
 
                 <!-- KPI 4: Tiempo Promedio de Asignación -->
                 <div class="bg-white/95 rounded-2xl p-4 border border-white shadow-sm">
-                    <p class="text-xs font-medium text-slate-600 leading-snug">Tiempo Promedio<br>de Asignación</p>
-                    <p class="font-headline font-black text-3xl text-[#08142C] mt-1">18 seg</p>
+                    <p class="text-xs font-medium text-slate-600 leading-snug">Frecuencia GPS<br>PWA Conductor</p>
+                    <p class="font-headline font-black text-3xl text-[#08142C] mt-1">4 seg</p>
+                    <p class="text-[11px] text-emerald-600 font-semibold mt-0.5 flex items-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span> Sincronizado
+                    </p>
                 </div>
             </div>
 
-            <!-- Mapa GPS en Vivo de Huancayo (Reutilizando motor GPS Leaflet + OSRM) -->
+            <!-- Mapa GPS en Vivo de Huancayo (OpenStreetMap + Telemetría en Tiempo Real de la Flota PWA) -->
             <div id="mapa-en-vivo" class="relative bg-white rounded-3xl p-2 border border-white shadow-md overflow-hidden">
                 <div id="mapa-torre-control" class="w-full h-[460px] rounded-2xl z-0"></div>
 
-                <!-- Botón flotante superior derecho (Capas) -->
+                <!-- Filtros Flotantes Superiores (Todas / Haciendo Servicio / Radar GPS) -->
+                <div class="absolute top-5 left-14 z-[400] flex flex-wrap items-center gap-1.5 bg-white/95 backdrop-blur-xs p-1.5 rounded-xl shadow-md border border-slate-200/80 text-xs">
+                    <button type="button" onclick="window.filtrarMapaKaluz('todos')" id="btn-filtro-todos"
+                        class="px-3 py-1.5 rounded-lg font-bold transition bg-[#08142C] text-white">
+                        Todas (<span id="count-flota-todas">{{ count($flotaEnVivo) }}</span>)
+                    </button>
+                    <button type="button" onclick="window.filtrarMapaKaluz('servicio')" id="btn-filtro-servicio"
+                        class="px-3 py-1.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>En Servicio (<span id="count-flota-servicio">{{ $enServicioAhora }}</span>)</span>
+                    </button>
+                    <button type="button" onclick="window.filtrarMapaKaluz('radar')" id="btn-filtro-radar"
+                        class="px-3 py-1.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-[#D91B23]"></span>
+                        <span>Disponibles GPS (<span id="count-flota-radar">{{ max(0, $totalHabilitados - $enServicioAhora) }}</span>)</span>
+                    </button>
+                </div>
+
+                <!-- Botón flotante superior derecho (Centrar Huancayo) -->
                 <div class="absolute top-5 right-5 z-[400] flex items-center gap-2">
                     <button type="button" onclick="window.centrarMapaKaluz && window.centrarMapaKaluz()"
-                        class="w-10 h-10 rounded-xl bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-700 hover:text-[#08142C] transition"
-                        title="Centrar en Huancayo">
-                        <i class="ri-stack-line text-lg"></i>
+                        class="px-3 h-10 rounded-xl bg-white shadow-md border border-slate-200 flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-[#08142C] transition"
+                        title="Ver toda la flota en Huancayo">
+                        <i class="ri-focus-3-line text-base text-[#D91B23]"></i>
+                        <span>Centrar Flota</span>
                     </button>
                 </div>
 
                 <!-- Leyenda flotante inferior -->
-                <div class="absolute bottom-5 left-5 z-[400] bg-white/95 backdrop-blur-xs rounded-xl px-3.5 py-2 shadow-md border border-slate-200/80 flex items-center gap-4 text-xs font-medium text-slate-700">
-                    <span class="flex items-center gap-1.5">
-                        <span class="w-3 h-3 rounded-full bg-[#08142C] inline-block"></span> Central KALUZ
-                    </span>
-                    <span class="flex items-center gap-1.5">
-                        <span class="w-3 h-3 rounded-full bg-[#D91B23] inline-block"></span> Unidades GPS ({{ $conductores->count() }})
-                    </span>
-                    <a href="{{ route('despacho.demo.crear-solicitud') }}" class="text-[#D91B23] font-bold hover:underline flex items-center gap-1">
-                        <i class="ri-add-circle-line"></i> Simular Viaje
-                    </a>
+                <div class="absolute bottom-5 left-5 right-5 z-[400] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+                    <div class="pointer-events-auto bg-white/95 backdrop-blur-xs rounded-xl px-3.5 py-2 shadow-md border border-slate-200/80 flex flex-wrap items-center gap-4 text-xs font-medium text-slate-700">
+                        <span class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-full bg-[#08142C] inline-block"></span> Central KALUZ
+                        </span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block animate-pulse"></span> En Carrera / Servicio
+                        </span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-full bg-[#D91B23] inline-block"></span> En Radar PWA (GPS)
+                        </span>
+                        <span class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-full bg-slate-400 inline-block"></span> Bloqueado
+                        </span>
+                        <a href="{{ route('despacho.demo.crear-solicitud') }}" class="text-[#D91B23] font-bold hover:underline flex items-center gap-1">
+                            <i class="ri-add-circle-line"></i> Simular Viaje
+                        </a>
+                    </div>
+
+                    <div class="pointer-events-auto bg-[#08142C]/95 text-white rounded-xl px-3 py-2 shadow-md text-[11px] font-semibold flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                        <span id="estado-telemetria-mapa">GPS PWA en vivo</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel Interactivo de Unidades en Servicio / GPS Activo (Click para ubicar en el mapa) -->
+            <div class="bg-white/95 rounded-3xl p-4 border border-white shadow-sm space-y-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <i class="ri-taxi-wifi-fill text-lg text-[#D91B23]"></i>
+                        <h2 class="font-headline font-bold text-sm text-[#08142C]">
+                            Unidades en Servicio y Flota Conectada al GPS de la PWA
+                        </h2>
+                    </div>
+                    <span class="text-[11px] text-slate-500">Haz clic en una unidad para seguirla en el mapa</span>
+                </div>
+
+                <div id="grid-flota-en-vivo" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    @foreach ($flotaEnVivo as $u)
+                        <button type="button"
+                            onclick="window.enfocarUnidadKaluz({{ $u['id'] }})"
+                            class="text-left rounded-2xl p-3 border transition flex flex-col justify-between gap-2 hover:shadow-md
+                                {{ $u['en_servicio']
+                                    ? 'bg-emerald-50/90 border-emerald-300'
+                                    : ($u['habilitado']
+                                        ? 'bg-slate-50/90 border-slate-200 hover:border-[#08142C]/30'
+                                        : 'bg-red-50/50 border-red-200/70 opacity-80') }}">
+                            <div class="flex items-center justify-between gap-1.5">
+                                <span class="font-headline font-black text-xs text-[#08142C] bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
+                                    {{ $u['placa'] }}
+                                </span>
+                                @if ($u['en_servicio'])
+                                    <span class="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded-full">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+                                        EN CARRERA
+                                    </span>
+                                @elseif ($u['habilitado'])
+                                    <span class="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                        GPS ACTIVO
+                                    </span>
+                                @else
+                                    <span class="inline-flex items-center gap-1 text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                                        <i class="ri-lock-fill text-[9px]"></i>
+                                        CANDADO
+                                    </span>
+                                @endif
+                            </div>
+
+                            <div>
+                                <p class="font-headline font-bold text-xs text-[#08142C] truncate">{{ $u['nombre'] }}</p>
+                                <p class="text-[11px] text-slate-500 truncate">{{ $u['modelo_vehiculo'] }}</p>
+                            </div>
+
+                            @if ($u['en_servicio'] && !empty($u['viaje']))
+                                <div class="text-[10px] bg-white/90 rounded-lg px-2 py-1 border border-emerald-200 text-emerald-950 truncate">
+                                    <i class="ri-map-pin-2-fill text-[#D91B23]"></i>
+                                    {{ $u['viaje']['origen_texto'] }} → {{ $u['viaje']['destino_texto'] }}
+                                </div>
+                            @else
+                                <div class="text-[10px] text-slate-400 flex items-center justify-between">
+                                    <span><i class="ri-gps-line text-emerald-600"></i> {{ $u['lat'] }}, {{ $u['lng'] }}</span>
+                                </div>
+                            @endif
+                        </button>
+                    @endforeach
                 </div>
             </div>
         </div>
 
         <!-- Columna Derecha (4/12): Validación de Pagos Yape + Solicitudes WhatsApp En Vivo -->
         <div class="xl:col-span-4 space-y-4">
-            <!-- Tarjeta 1: Validación de Pagos Yape (S/ 1.00) (Idéntica a Imagen 3) -->
+            <!-- Tarjeta 1: Validación de Pagos Yape (S/ 1.00) -->
             <div class="bg-white/95 rounded-3xl p-5 border border-white shadow-sm space-y-4"
                  x-data="{
                     conductorNombre: @js($conductorYape->nombre ?? 'Carlos Mendoza'),
@@ -199,7 +307,7 @@
                 </div>
             </div>
 
-            <!-- Tarjeta 2: Solicitudes WhatsApp (En Vivo) (Idéntica a Imagen 3) -->
+            <!-- Tarjeta 2: Solicitudes WhatsApp (En Vivo) -->
             <div class="bg-white/95 rounded-3xl p-5 border border-white shadow-sm space-y-3">
                 <div class="flex items-center justify-between">
                     <h2 class="font-headline font-bold text-base text-[#08142C]">
@@ -208,16 +316,16 @@
                     <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
                 </div>
 
-                <div class="space-y-2.5 max-h-[250px] overflow-y-auto pr-1">
-                    @forelse ($solicitudes->take(6) as $index => $sol)
-                        <div class="rounded-2xl p-3 border transition flex items-start gap-3 {{ $index === 1 ? 'bg-amber-50/90 border-amber-200/80' : 'bg-slate-100/90 border-slate-200/70' }}">
+                <div class="space-y-2.5 max-h-[280px] overflow-y-auto pr-1">
+                    @forelse ($solicitudes->take(8) as $index => $sol)
+                        <div class="rounded-2xl p-3 border transition flex items-start gap-3 {{ in_array($sol->estado, ['asignado', 'en_ruta']) ? 'bg-emerald-50/90 border-emerald-200/80' : ($index === 0 ? 'bg-amber-50/90 border-amber-200/80' : 'bg-slate-100/90 border-slate-200/70') }}">
                             <div class="w-9 h-9 rounded-full bg-[#08142C] text-white flex items-center justify-center shrink-0 mt-0.5">
                                 <i class="ri-whatsapp-line text-lg"></i>
                             </div>
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center justify-between gap-2">
                                     <p class="text-xs font-bold text-[#08142C]">
-                                        Oferta S/ {{ number_format((float) $sol->oferta_cliente, 2) }} -
+                                        S/ {{ number_format((float) ($sol->precio_final ?? $sol->oferta_cliente), 2) }} -
                                         <span class="{{ in_array($sol->estado, ['asignado', 'en_ruta', 'completado']) ? 'text-emerald-600' : 'text-amber-600' }}">
                                             {{ ucfirst(str_replace('_', ' ', $sol->estado)) }}
                                         </span>
@@ -229,9 +337,16 @@
                                 <p class="text-xs text-slate-600 truncate mt-0.5">
                                     {{ $sol->origen_texto }} <i class="ri-arrow-right-line text-[10px]"></i> {{ $sol->destino_texto }}
                                 </p>
-                                <p class="text-[10px] text-slate-400 mt-0.5">
-                                    WhatsApp • {{ $sol->cliente_nombre ?: $sol->cliente_telefono }}
-                                </p>
+                                <div class="flex items-center justify-between mt-0.5">
+                                    <p class="text-[10px] text-slate-400">
+                                        WhatsApp • {{ $sol->cliente_nombre ?: $sol->cliente_telefono }}
+                                    </p>
+                                    @if (in_array($sol->estado, ['asignado', 'en_ruta']))
+                                        <a href="{{ url('/rastreo/' . $sol->id) }}" target="_blank" class="text-[10px] font-bold text-emerald-700 hover:underline">
+                                            Ver rastreo →
+                                        </a>
+                                    @endif
+                                </div>
                             </div>
                         </div>
                     @empty
@@ -256,92 +371,299 @@
         const centroHuancayo = [-12.0651, -75.2049];
         const mapa = L.map(contenedor, {
             zoomControl: true,
-            attributionControl: false,
-        }).setView(centroHuancayo, 15);
+            attributionControl: true,
+        }).setView(centroHuancayo, 14);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        // Mismo mapa OpenStreetMap que las demás ventanas de la PWA
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
+            attribution: '&copy; OpenStreetMap',
         }).addTo(mapa);
 
-        // Ruta demostrativa por el centro de Huancayo (Real Plaza -> Parque Constitución -> El Tambo)
-        const puntosRuta = [
-            [-12.0642, -75.2078],
-            [-12.0668, -75.2089],
-            [-12.0679, -75.2045],
-            [-12.0653, -75.2032],
-            [-12.0663, -75.1995],
-            [-12.0648, -75.1988]
-        ];
-
-        L.polyline(puntosRuta, {
-            color: '#08142C',
-            weight: 5,
-            opacity: 0.9,
-            lineJoin: 'round'
-        }).addTo(mapa);
-
-        // Pin Central Taxi KALUZ (idéntico al pin circular azul marino de la Imagen 3)
+        // Pin Central Taxi KALUZ
         const iconoCentralKaluz = L.divIcon({
             className: '',
             html: `
-                <div style="position:relative;width:48px;height:48px;border-radius:50%;background:#08142C;border:3px solid #fff;box-shadow:0 6px 16px rgba(8,20,44,0.45);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:Montserrat,sans-serif;line-height:1;">
+                <div style="position:relative;width:46px;height:46px;border-radius:50%;background:#08142C;border:3px solid #fff;box-shadow:0 6px 16px rgba(8,20,44,0.45);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:Montserrat,sans-serif;line-height:1;">
                     <span style="font-size:8px;font-weight:700;color:#FACC15;">Taxi</span>
                     <span style="font-size:10px;font-weight:900;letter-spacing:0.5px;">KALUZ</span>
                 </div>
             `,
-            iconSize: [48, 48],
-            iconAnchor: [24, 24],
+            iconSize: [46, 46],
+            iconAnchor: [23, 23],
         });
 
-        L.marker([-12.0642, -75.2078], { icon: iconoCentralKaluz })
+        L.marker([-12.0651, -75.2049], { icon: iconoCentralKaluz })
             .addTo(mapa)
-            .bindPopup('<strong>Central Taxi KALUZ</strong><br>Real Plaza Huancayo');
+            .bindPopup('<strong>Central Taxi KALUZ</strong><br>Parque Constitución • Huancayo');
 
-        // Pin Destino
-        const iconoDestino = L.divIcon({
-            className: '',
-            html: `<div style="width:28px;height:28px;border-radius:50%;background:#08142C;border:3px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px rgba(0,0,0,0.3);"><i class="ri-map-pin-2-fill" style="font-size:14px;"></i></div>`,
-            iconSize: [28, 28],
-            iconAnchor: [14, 14],
-        });
-        L.marker([-12.0648, -75.1988], { icon: iconoDestino })
-            .addTo(mapa)
-            .bindPopup('<strong>Destino Activo</strong><br>Parque de la Identidad / El Tambo');
+        let flotaDatos = @json($flotaEnVivo);
+        let filtroActual = 'todos';
+        const marcadoresUnidades = new Map();
+        const lineasServicio = new Map();
+        const marcadoresDestinos = new Map();
 
-        // Icono de vehículo rojo vista superior (como los autos rojos en la ruta de la Imagen 3)
-        const crearIconoAutoRojo = (rotacion = -20) => L.divIcon({
-            className: '',
-            html: `
-                <div style="transform:rotate(${rotacion}deg);width:36px;height:20px;background:#D91B23;border-radius:6px;border:2px solid #fff;box-shadow:0 4px 8px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;">
-                    <div style="width:18px;height:12px;background:#08142C;border-radius:3px;"></div>
-                </div>
-            `,
-            iconSize: [36, 20],
-            iconAnchor: [18, 10],
-        });
+        function crearIconoUnidad(u) {
+            if (u.en_servicio) {
+                // Unidad haciendo servicio activo (verde esmeralda con pulso y placa visible)
+                return L.divIcon({
+                    className: '',
+                    html: `
+                        <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-8px);">
+                            <div style="background:#059669;color:#fff;font-family:Montserrat,sans-serif;font-size:9px;font-weight:800;padding:2px 6px;border-radius:999px;border:1.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap;margin-bottom:2px;display:flex;align-items:center;gap:3px;">
+                                <span style="width:6px;height:6px;border-radius:50%;background:#A7F3D0;display:inline-block;"></span>
+                                <span>${u.placa} • EN SERVICIO</span>
+                            </div>
+                            <div style="width:36px;height:36px;border-radius:50%;background:#059669;border:3px solid #fff;box-shadow:0 4px 12px rgba(5,150,105,0.55);display:flex;align-items:center;justify-content:center;color:#fff;">
+                                <i class="ri-taxi-fill" style="font-size:18px;"></i>
+                            </div>
+                        </div>
+                    `,
+                    iconSize: [110, 56],
+                    iconAnchor: [55, 42],
+                    popupAnchor: [0, -36],
+                });
+            }
 
-        const conductores = @json($conductores->values());
-        conductores.forEach((c, idx) => {
-            const lat = c.lat_actual ? parseFloat(c.lat_actual) : (-12.0651 + (idx - 3) * 0.0012);
-            const lng = c.lng_actual ? parseFloat(c.lng_actual) : (-75.2049 + (idx - 3) * 0.0015);
-            const rotacion = idx % 2 === 0 ? 22 : -18;
+            if (u.habilitado) {
+                // Unidad habilitada en radar con GPS activo
+                return L.divIcon({
+                    className: '',
+                    html: `
+                        <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-6px);">
+                            <div style="background:#08142C;color:#fff;font-family:Montserrat,sans-serif;font-size:9px;font-weight:800;padding:1.5px 6px;border-radius:999px;border:1.5px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.25);white-space:nowrap;margin-bottom:2px;">
+                                ${u.placa}
+                            </div>
+                            <div style="width:32px;height:32px;border-radius:50%;background:#D91B23;border:2.5px solid #fff;box-shadow:0 4px 10px rgba(217,27,35,0.45);display:flex;align-items:center;justify-content:center;color:#fff;">
+                                <i class="ri-taxi-line" style="font-size:15px;"></i>
+                            </div>
+                        </div>
+                    `,
+                    iconSize: [76, 50],
+                    iconAnchor: [38, 38],
+                    popupAnchor: [0, -32],
+                });
+            }
 
-            L.marker([lat, lng], { icon: crearIconoAutoRojo(rotacion) })
-                .addTo(mapa)
-                .bindPopup(`
-                    <div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.4;">
-                        <strong style="color:#08142C;">${c.nombre}</strong><br>
-                        <span>${c.placa} • ${c.modelo_vehiculo}</span><br>
-                        <span style="color:${c.habilitado ? '#059669' : '#DC2626'};font-weight:700;">
-                            ${c.habilitado ? '● Habilitado' : '● Candado S/ 1.00'}
-                        </span>
+            // Unidad bloqueada por candado financiero
+            return L.divIcon({
+                className: '',
+                html: `
+                    <div style="display:flex;flex-direction:column;align-items:center;opacity:0.78;">
+                        <div style="background:#475569;color:#fff;font-family:Montserrat,sans-serif;font-size:8px;font-weight:700;padding:1px 5px;border-radius:999px;border:1px solid #fff;white-space:nowrap;margin-bottom:2px;">
+                            ${u.placa}
+                        </div>
+                        <div style="width:28px;height:28px;border-radius:50%;background:#64748B;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;color:#fff;">
+                            <i class="ri-lock-fill" style="font-size:13px;"></i>
+                        </div>
                     </div>
-                `);
-        });
+                `,
+                iconSize: [64, 44],
+                iconAnchor: [32, 34],
+                popupAnchor: [0, -28],
+            });
+        }
+
+        function crearPopupUnidad(u) {
+            if (u.en_servicio && u.viaje) {
+                return `
+                    <div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.45;min-width:210px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
+                            <strong style="color:#08142C;font-size:13px;">${u.nombre}</strong>
+                            <span style="background:#059669;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:999px;">EN SERVICIO</span>
+                        </div>
+                        <div style="color:#475569;font-size:11px;margin-bottom:6px;">
+                            <strong>${u.placa}</strong> • ${u.modelo_vehiculo}
+                        </div>
+                        <div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:6px 8px;margin-bottom:6px;">
+                            <div style="font-size:10px;font-weight:800;color:#047857;margin-bottom:2px;">${u.viaje.etiqueta}</div>
+                            <div style="font-size:11px;color:#065F46;"><strong>Pasajero:</strong> ${u.viaje.cliente_nombre}</div>
+                            <div style="font-size:11px;color:#065F46;"><strong>Origen:</strong> ${u.viaje.origen_texto}</div>
+                            <div style="font-size:11px;color:#065F46;"><strong>Destino:</strong> ${u.viaje.destino_texto}</div>
+                            <div style="font-size:12px;font-weight:800;color:#08142C;margin-top:3px;">Tarifa: S/ ${Number(u.viaje.tarifa).toFixed(2)}</div>
+                        </div>
+                        <div style="display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#64748B;">
+                            <span>GPS PWA: ${u.lat}, ${u.lng}</span>
+                            <a href="${u.viaje.url_rastreo}" target="_blank" style="color:#D91B23;font-weight:700;text-decoration:none;">Rastreo →</a>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `
+                <div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.45;min-width:190px;">
+                    <strong style="color:#08142C;font-size:13px;">${u.nombre}</strong><br>
+                    <span style="color:#475569;font-size:11px;"><strong>${u.placa}</strong> • ${u.modelo_vehiculo}</span><br>
+                    <span style="color:${u.habilitado ? '#059669' : '#DC2626'};font-weight:700;font-size:11px;">
+                        ${u.habilitado ? '● Disponible en Radar (GPS PWA Activo)' : '● Bloqueado (Candado S/ 1.00)'}
+                    </span>
+                    <div style="font-size:10px;color:#64748B;margin-top:4px;">
+                        Coord: ${u.lat}, ${u.lng}
+                    </div>
+                </div>
+            `;
+        }
+
+        function cumpleFiltro(u) {
+            if (filtroActual === 'servicio') return u.en_servicio;
+            if (filtroActual === 'radar') return u.habilitado && !u.en_servicio;
+            return true;
+        }
+
+        function renderizarFlota() {
+            const idsVisibles = new Set();
+
+            flotaDatos.forEach((u) => {
+                if (!cumpleFiltro(u)) {
+                    if (marcadoresUnidades.has(u.id)) {
+                        mapa.removeLayer(marcadoresUnidades.get(u.id));
+                        marcadoresUnidades.delete(u.id);
+                    }
+                    if (lineasServicio.has(u.id)) {
+                        mapa.removeLayer(lineasServicio.get(u.id));
+                        lineasServicio.delete(u.id);
+                    }
+                    if (marcadoresDestinos.has(u.id)) {
+                        mapa.removeLayer(marcadoresDestinos.get(u.id));
+                        marcadoresDestinos.delete(u.id);
+                    }
+                    return;
+                }
+
+                idsVisibles.add(u.id);
+                const latLng = [parseFloat(u.lat), parseFloat(u.lng)];
+
+                if (marcadoresUnidades.has(u.id)) {
+                    const m = marcadoresUnidades.get(u.id);
+                    m.setLatLng(latLng);
+                    m.setIcon(crearIconoUnidad(u));
+                    m.setPopupContent(crearPopupUnidad(u));
+                } else {
+                    const m = L.marker(latLng, { icon: crearIconoUnidad(u) })
+                        .addTo(mapa)
+                        .bindPopup(crearPopupUnidad(u));
+                    marcadoresUnidades.set(u.id, m);
+                }
+
+                // Si la unidad está haciendo un servicio activo, trazar la línea hacia su objetivo (recojo o destino)
+                if (u.en_servicio && u.viaje) {
+                    const destLat = u.viaje.estado === 'en_ruta' ? u.viaje.destino_lat : u.viaje.origen_lat;
+                    const destLng = u.viaje.estado === 'en_ruta' ? u.viaje.destino_lng : u.viaje.origen_lng;
+                    const puntos = [latLng, [destLat, destLng]];
+
+                    if (lineasServicio.has(u.id)) {
+                        lineasServicio.get(u.id).setLatLngs(puntos);
+                    } else {
+                        const linea = L.polyline(puntos, {
+                            color: '#059669',
+                            weight: 4,
+                            opacity: 0.85,
+                            dashArray: '8, 6',
+                        }).addTo(mapa);
+                        lineasServicio.set(u.id, linea);
+                    }
+
+                    const iconoObj = L.divIcon({
+                        className: '',
+                        html: `<div style="width:24px;height:24px;border-radius:50%;background:#08142C;border:2px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3);font-size:11px;font-weight:800;">${u.viaje.estado === 'en_ruta' ? 'B' : 'A'}</div>`,
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 12],
+                    });
+
+                    if (marcadoresDestinos.has(u.id)) {
+                        marcadoresDestinos.get(u.id).setLatLng([destLat, destLng]).setIcon(iconoObj);
+                    } else {
+                        const mDest = L.marker([destLat, destLng], { icon: iconoObj })
+                            .addTo(mapa)
+                            .bindPopup(`<strong>${u.viaje.estado === 'en_ruta' ? 'Destino' : 'Punto de Recojo'} (${u.placa})</strong><br>${u.viaje.estado === 'en_ruta' ? u.viaje.destino_texto : u.viaje.origen_texto}`);
+                        marcadoresDestinos.set(u.id, mDest);
+                    }
+                } else {
+                    if (lineasServicio.has(u.id)) {
+                        mapa.removeLayer(lineasServicio.get(u.id));
+                        lineasServicio.delete(u.id);
+                    }
+                    if (marcadoresDestinos.has(u.id)) {
+                        mapa.removeLayer(marcadoresDestinos.get(u.id));
+                        marcadoresDestinos.delete(u.id);
+                    }
+                }
+            });
+        }
+
+        window.filtrarMapaKaluz = (nuevoFiltro) => {
+            filtroActual = nuevoFiltro;
+            ['todos', 'servicio', 'radar'].forEach((f) => {
+                const btn = document.getElementById('btn-filtro-' + f);
+                if (!btn) return;
+                if (f === nuevoFiltro) {
+                    btn.className = 'px-3 py-1.5 rounded-lg font-bold transition bg-[#08142C] text-white flex items-center gap-1.5';
+                } else {
+                    btn.className = 'px-3 py-1.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100 flex items-center gap-1.5';
+                }
+            });
+            renderizarFlota();
+        };
+
+        window.enfocarUnidadKaluz = (id) => {
+            const u = flotaDatos.find(item => item.id === id);
+            if (!u) return;
+            if (!cumpleFiltro(u)) {
+                window.filtrarMapaKaluz('todos');
+            }
+            mapa.flyTo([parseFloat(u.lat), parseFloat(u.lng)], 16, { duration: 0.8 });
+            const marcador = marcadoresUnidades.get(id);
+            if (marcador) {
+                setTimeout(() => marcador.openPopup(), 400);
+            }
+        };
 
         window.centrarMapaKaluz = () => {
-            mapa.setView(centroHuancayo, 15, { animate: true });
+            if (marcadoresUnidades.size > 0) {
+                const grupo = L.featureGroup(Array.from(marcadoresUnidades.values()));
+                mapa.fitBounds(grupo.getBounds(), { padding: [45, 45], maxZoom: 15 });
+            } else {
+                mapa.setView(centroHuancayo, 14, { animate: true });
+            }
         };
+
+        async function actualizarTelemetriaFlota() {
+            try {
+                const res = await fetch('{{ route('dashboard.api.flota') }}', {
+                    headers: { 'Accept': 'application/json' },
+                    cache: 'no-store',
+                });
+                if (!res.ok) return;
+                const json = await res.json();
+                if (!json.ok || !Array.isArray(json.flota)) return;
+
+                flotaDatos = json.flota;
+                renderizarFlota();
+
+                const enServicioCount = json.resumen?.en_viaje ?? 0;
+                const enRadarCount = json.resumen?.en_radar_gps ?? 0;
+                const totalCount = json.resumen?.total_flota ?? flotaDatos.length;
+
+                const elTodas = document.getElementById('count-flota-todas');
+                const elServicio = document.getElementById('count-flota-servicio');
+                const elRadar = document.getElementById('count-flota-radar');
+                const elLabelServicio = document.getElementById('kpi-en-servicio-label');
+                const elEstadoMapa = document.getElementById('estado-telemetria-mapa');
+
+                if (elTodas) elTodas.textContent = totalCount;
+                if (elServicio) elServicio.textContent = enServicioCount;
+                if (elRadar) elRadar.textContent = enRadarCount;
+                if (elLabelServicio) elLabelServicio.textContent = enServicioCount + ' en carrera ahora';
+                if (elEstadoMapa) {
+                    const ahora = new Date();
+                    elEstadoMapa.textContent = 'GPS PWA actualizado ' + ahora.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                }
+            } catch (e) {}
+        }
+
+        renderizarFlota();
+        window.centrarMapaKaluz();
+        setInterval(actualizarTelemetriaFlota, 4000);
     });
 </script>
 @endsection

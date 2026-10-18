@@ -141,6 +141,53 @@
                 navigator.serviceWorker.register('{{ asset('sw.js') }}').catch(() => {});
             });
         }
+
+        @if (!View::hasSection('ocultar_nav') && !empty($navConductorId) && !request()->routeIs('despacho.viaje'))
+        (function () {
+            const conductorId = {{ (int) $navConductorId }};
+            const urlUbicacion = @json(route('despacho.api.ubicacion', ['conductor_id' => (int) $navConductorId]));
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+            let latActual = {{ isset($conductor) && !empty($conductor->lat_actual) ? (float) $conductor->lat_actual : -12.0651 }};
+            let lngActual = {{ isset($conductor) && !empty($conductor->lng_actual) ? (float) $conductor->lng_actual : -75.2049 }};
+
+            function enviarGpsPwa(lat, lng) {
+                fetch(urlUbicacion, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrf,
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ lat: lat, lng: lng, conductor_id: conductorId }),
+                }).catch(() => {});
+            }
+
+            function reportarUbicacionPwa() {
+                if (document.hidden) return;
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                            latActual = pos.coords.latitude;
+                            lngActual = pos.coords.longitude;
+                            enviarGpsPwa(latActual, lngActual);
+                        },
+                        () => {
+                            enviarGpsPwa(latActual, lngActual);
+                        },
+                        { enableHighAccuracy: true, timeout: 6000, maximumAge: 4000 }
+                    );
+                } else {
+                    enviarGpsPwa(latActual, lngActual);
+                }
+            }
+
+            window.addEventListener('load', () => {
+                reportarUbicacionPwa();
+                setInterval(reportarUbicacionPwa, 6000);
+            });
+        })();
+        @endif
     </script>
     @yield('scripts')
 </body>

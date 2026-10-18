@@ -50,9 +50,11 @@ Route::prefix('conductor')->name('despacho.')->group(function () {
             ->name('api.viaje-activo');
         Route::post('/api/viaje/{id}/estado', [SubastaAtomicaController::class, 'cambiarEstadoViaje'])
             ->name('api.viaje.estado');
-        Route::post('/api/ubicacion', [SubastaAtomicaController::class, 'ubicacion'])
-            ->name('api.ubicacion');
     });
+
+    // --- Telemetría GPS de la PWA (activa mientras el conductor mantiene abierta la PWA) ---
+    Route::post('/api/ubicacion', [SubastaAtomicaController::class, 'ubicacion'])
+        ->name('api.ubicacion');
 
     // --- Acción del PASAJERO vía Bot (Dev 4): aceptar una contraoferta ---
     // Va fuera del candado: no es una acción del conductor, es el cliente eligiendo.
