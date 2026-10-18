@@ -10,21 +10,27 @@ class PagoComision extends Model
 {
     use HasFactory;
 
-    protected $table = 'pagos_comision';
+    protected $table = 'pagos_comisiones';
+
+    public const CREATED_AT = 'fecha_registro';
+
+    public const UPDATED_AT = null;
 
     protected $fillable = [
         'conductor_id',
         'monto',
+        'dias_pagados',
         'metodo_pago', // yape, plin, efectivo
-        'codigo_operacion',
         'comprobante_url',
-        'estado', // pendiente, validado, rechazado
-        'fecha_validacion',
+        'estado', // pendiente, aprobado, rechazado
+        'fecha_aprobacion',
     ];
 
     protected $casts = [
         'monto' => 'decimal:2',
-        'fecha_validacion' => 'datetime',
+        'dias_pagados' => 'integer',
+        'fecha_registro' => 'datetime',
+        'fecha_aprobacion' => 'datetime',
     ];
 
     public function conductor(): BelongsTo
