@@ -158,6 +158,8 @@ class ValidacionCandadoServiceTest extends TestCase
             ->assertSee('Vista de demostración')
             ->assertSee('Conductor Demo 01')
             ->assertSee('Conductor Demo 08')
+            ->assertSee('Flota y afiliados')
+            ->assertSee('Estado financiero')
             ->assertSee('Solo lectura')
             ->assertDontSee('Registrar socio o unidad propia')
             ->assertDontSee('Guardar cambios')
