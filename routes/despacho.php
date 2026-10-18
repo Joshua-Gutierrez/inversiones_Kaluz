@@ -20,8 +20,11 @@ Route::prefix('conductor')->name('despacho.')->group(function () {
     Route::post('/entrar', [ConductorPwaController::class, 'entrar'])->name('entrar');
     Route::post('/salir', [ConductorPwaController::class, 'salir'])->name('salir');
 
-    // --- Pantalla de bloqueo (candado S/ 1.00 o permiso vencido) ---
+    // --- Pantalla de bloqueo (candado S/ 1.00 o permiso vencido) y Pago Móvil ---
     Route::get('/bloqueado', [ConductorPwaController::class, 'bloqueado'])->name('pwa.bloqueado');
+    Route::get('/cuota', [ConductorPwaController::class, 'cuota'])->name('cuota');
+    Route::post('/cuota/pagar', [ConductorPwaController::class, 'pagarCuota'])->name('cuota.pagar');
+    Route::get('/desbloqueado', [ConductorPwaController::class, 'desbloqueado'])->name('desbloqueado');
 
     // --- Demo: crear solicitud de ejemplo sin depender del bot (Dev 4) ---
     Route::get('/demo/crear-solicitud', [ConductorPwaController::class, 'demoCrearSolicitud'])
@@ -47,9 +50,11 @@ Route::prefix('conductor')->name('despacho.')->group(function () {
             ->name('api.viaje-activo');
         Route::post('/api/viaje/{id}/estado', [SubastaAtomicaController::class, 'cambiarEstadoViaje'])
             ->name('api.viaje.estado');
-        Route::post('/api/ubicacion', [SubastaAtomicaController::class, 'ubicacion'])
-            ->name('api.ubicacion');
     });
+
+    // --- Telemetría GPS de la PWA (activa mientras el conductor mantiene abierta la PWA) ---
+    Route::post('/api/ubicacion', [SubastaAtomicaController::class, 'ubicacion'])
+        ->name('api.ubicacion');
 
     // --- Acción del PASAJERO vía Bot (Dev 4): aceptar una contraoferta ---
     // Va fuera del candado: no es una acción del conductor, es el cliente eligiendo.

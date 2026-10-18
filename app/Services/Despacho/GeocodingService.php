@@ -19,13 +19,44 @@ class GeocodingService
     public const HUANCAYO = ['lat' => -12.0651, 'lng' => -75.2049];
 
     /**
-     * Lugares usados por la demo y las solicitudes más comunes.
+     * Lugares usados por la demo y las solicitudes más comunes en Huancayo.
      */
     private const LUGARES = [
+        'universidad continental' => ['lat' => -12.0475, 'lng' => -75.1989],
+        'continental' => ['lat' => -12.0475, 'lng' => -75.1989],
         'real plaza' => ['lat' => -12.0674771, 'lng' => -75.2048808],
+        'open plaza' => ['lat' => -12.0619, 'lng' => -75.2114],
+        'parque de la identidad' => ['lat' => -12.0558, 'lng' => -75.1932],
+        'identidad' => ['lat' => -12.0558, 'lng' => -75.1932],
         'el tambo' => ['lat' => -12.0571319, 'lng' => -75.2176609],
         'plaza constitucion' => ['lat' => -12.0680457, 'lng' => -75.2100731],
+        'constitucion' => ['lat' => -12.0680457, 'lng' => -75.2100731],
+        'chilca' => ['lat' => -12.0853, 'lng' => -75.2078],
+        'cerrito de la libertad' => ['lat' => -12.0628, 'lng' => -75.1972],
+        'terminal terrestre' => ['lat' => -12.0436, 'lng' => -75.2225],
+        'uncp' => ['lat' => -12.0338, 'lng' => -75.2148],
+        'universidad nacional' => ['lat' => -12.0338, 'lng' => -75.2148],
+        'hospital carrion' => ['lat' => -12.0659, 'lng' => -75.2156],
+        'ramiro priale' => ['lat' => -12.0451, 'lng' => -75.2183],
+        'mil maravillas' => ['lat' => -12.0512, 'lng' => -75.2035],
+        'san carlos' => ['lat' => -12.0595, 'lng' => -75.2010],
     ];
+
+    /**
+     * Calcula una tarifa sugerida en soles según distancia Haversine en Huancayo.
+     */
+    public function precioSugerido(float $origenLat, float $origenLng, float $destinoLat, float $destinoLng): float
+    {
+        $radioKm = 6371.0;
+        $dLat = deg2rad($destinoLat - $origenLat);
+        $dLng = deg2rad($destinoLng - $origenLng);
+        $a = sin($dLat / 2) ** 2 + cos(deg2rad($origenLat)) * cos(deg2rad($destinoLat)) * sin($dLng / 2) ** 2;
+        $distanciaKm = $radioKm * (2 * atan2(sqrt($a), sqrt(1 - $a)));
+
+        $tarifa = 5.0 + ($distanciaKm * 1.1);
+
+        return max(5.0, round($tarifa * 2) / 2);
+    }
 
     /**
      * @return array{lat: float, lng: float, precision: string}

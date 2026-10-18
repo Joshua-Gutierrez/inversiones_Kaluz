@@ -16,8 +16,12 @@
             "dest": "/public/build/$1"
         },
         {
-            "src": "/(css|js|images|favicon.ico)/(.*)",
+            "src": "/(css|js|images|icons)/(.*)",
             "dest": "/public/$1/$2"
+        },
+        {
+            "src": "/(manifest\\.json|sw\\.js|favicon\\.ico|robots\\.txt)",
+            "dest": "/public/$1"
         },
         {
             "src": "/(.*)",
@@ -38,6 +42,10 @@
         "LOG_CHANNEL": "stderr",
         "SESSION_DRIVER": "cookie",
         "SUPABASE_URL": "https://faerdliihcmygbeyevnt.supabase.co",
-        "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZXJkbGlpaGNteWdiZXlldm50Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTY5MjMsImV4cCI6MjEwNzc3MjkyM30.GLAvwC79A_9VuM943pS3F9v7NcTtO4xqXP5bROGgd9A"
+        "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZXJkbGlpaGNteWdiZXlldm50Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTY5MjMsImV4cCI6MjEwNzc3MjkyM30.GLAvwC79A_9VuM943pS3F9v7NcTtO4xqXP5bROGgd9A",
+        "META_WA_PHONE_NUMBER_ID": "1387228187808934",
+        "META_WA_BEARER_TOKEN": "EAAPjeWdGplgBS9zJrAyvVnEEMtw6t7PRLbNjZAT0925JQ5B1S4plp84nZB1BWuyYGBJQrBroZBjKK9ce2mByrMhtaefM64aNeNoZBGoqZBNgrMj10BGPeChAAoOGhCJg1QI8pCwQHW7lYv6aVzeyylep1vOGOVVm2DlAMEwyBZCaIUW0MTJz0D7LWuR3znXswF1u4GGWLLcZBMEZA9vABsVSnd23fwhfPpuQMJADm9M72w788bIWeXnXKFZBLIwA8Pz77Ssps6EDNPSEr9a1hWUyHn5gl",
+        "META_WEBHOOK_VERIFY_TOKEN": "kaluz2026",
+        "OCR_SPACE_API_KEY": "K84914448788957"
     }
 }
