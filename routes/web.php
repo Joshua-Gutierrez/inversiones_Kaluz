@@ -211,27 +211,43 @@ Route::post('/webhook', function (Request $request) {
              *    ]);
              */
 
-            // Insertar solicitud real en Supabase para que salte en el Radar del Conductor (/conductor/radar)
+            // Si el cliente ya envió hace poco su texto "Desde: ... A: ...", actualizamos esa solicitud con sus coordenadas GPS reales
             $nombreContacto = (string) data_get($body, 'entry.0.changes.0.value.contacts.0.profile.name', 'Pasajero WhatsApp');
             $direccionEnviada = (string) (data_get($mensaje, 'location.name') ?: data_get($mensaje, 'location.address') ?: "Ubicación GPS ({$latPasajero}, {$lonPasajero})");
 
-            $viajeCreado = Supabase::table('solicitudes_viaje')->insert([
-                'cliente_nombre' => $nombreContacto,
-                'cliente_telefono' => $remitente,
-                'origen_texto' => $direccionEnviada,
-                'origen_lat' => $latPasajero ?: -12.0681,
-                'origen_lng' => $lonPasajero ?: -75.2069,
-                'destino_texto' => 'Centro de Huancayo (Ubicación WhatsApp)',
-                'destino_lat' => -12.0651,
-                'destino_lng' => -75.2049,
-                'tipo_servicio' => 'urbano',
-                'oferta_cliente' => 6.00,
-                'estado' => 'pendiente',
-                'created_at' => now()->toIso8601String(),
-                'updated_at' => now()->toIso8601String(),
-            ]);
+            $solicitudPendiente = Supabase::table('solicitudes_viaje')
+                ->where('cliente_telefono', $remitente)
+                ->where('estado', 'pendiente')
+                ->orderByDesc('id')
+                ->first();
 
-            $linkRastreo = url('/rastreo/'.($viajeCreado->id ?? 1));
+            if ($solicitudPendiente) {
+                Supabase::table('solicitudes_viaje')->where('id', $solicitudPendiente->id)->update([
+                    'origen_lat' => $latPasajero ?: -12.0681,
+                    'origen_lng' => $lonPasajero ?: -75.2069,
+                    'updated_at' => now()->toIso8601String(),
+                ]);
+                $idRastreo = $solicitudPendiente->id;
+            } else {
+                $viajeCreado = Supabase::table('solicitudes_viaje')->insert([
+                    'cliente_nombre' => $nombreContacto,
+                    'cliente_telefono' => $remitente,
+                    'origen_texto' => $direccionEnviada,
+                    'origen_lat' => $latPasajero ?: -12.0681,
+                    'origen_lng' => $lonPasajero ?: -75.2069,
+                    'destino_texto' => 'Centro de Huancayo (Ubicación WhatsApp)',
+                    'destino_lat' => -12.0651,
+                    'destino_lng' => -75.2049,
+                    'tipo_servicio' => 'urbano',
+                    'oferta_cliente' => 6.00,
+                    'estado' => 'pendiente',
+                    'created_at' => now()->toIso8601String(),
+                    'updated_at' => now()->toIso8601String(),
+                ]);
+                $idRastreo = $viajeCreado->id ?? 1;
+            }
+
+            $linkRastreo = url('/rastreo/'.$idRastreo);
 
             // 4. Confirmar recepción de ubicación al pasajero por WhatsApp Cloud API
             if ($remitente !== '') {
@@ -326,62 +342,80 @@ Route::post('/webhook', function (Request $request) {
         } elseif (is_array($mensaje) && ($mensaje['type'] ?? '') === 'text') {
             $remitente = (string) ($mensaje['from'] ?? '');
             $textoCliente = trim((string) data_get($mensaje, 'text.body', ''));
-            $nombreContacto = (string) data_get($body, 'entry.0.changes.0.value.contacts.0.profile.name', 'Pasajero WhatsApp');
+            $nombreContacto = (string) data_get($body, 'entry.0.changes.0.value.contacts.0.profile.name', 'Pasajero');
             $bearerToken = (string) env('META_WA_BEARER_TOKEN');
             $phoneId = (string) env('META_WA_PHONE_NUMBER_ID');
 
             if ($remitente !== '' && $textoCliente !== '') {
-                // Extraer origen, destino y oferta del texto (ej. "Estoy en Real Plaza, voy para El Tambo y ofrezco S/ 6.00" o "De Real Plaza a El Tambo por 6")
-                $origen = 'Real Plaza Huancayo';
-                $destino = 'El Tambo';
-                $oferta = 6.00;
+                // Detectar si el cliente ya está enviando el formato de viaje ("Desde: X A: Y" o "De X a Y")
+                $patronViaje = '/(?:desde\s*:?\s*|de\s+|estoy\s+en\s+)(.+?)\s+(?:a\s*:?\s*|hacia\s+|para\s+|destino\s*:?\s*|voy\s+a\s+|voy\s+para\s+)([^,\.\n]+?)(?:\s+(?:por|oferta\s*:?|y\s+ofrezco|ofrezco|s\/\.?)\s*(?:s\/\.?\s*)?(\d+(?:[\.,]\d+)?))?$/is';
 
-                if (preg_match('/(?:de|en|desde)\s+(.+?)\s+(?:a|hacia|para|voy\s+a|voy\s+para)\s+([^,\.]+?)(?:\s+(?:por|y\s+ofrezco|ofrezco|a)\s*(?:s\/\.?\s*)?(\d+(?:[\.,]\d+)?))?$/i', $textoCliente, $m)) {
-                    $origen = trim($m[1], ' ,.');
-                    $destino = trim($m[2], ' ,.');
+                if (preg_match($patronViaje, $textoCliente, $m)) {
+                    $origen = trim($m[1], " ,.:\n\r");
+                    $destino = trim($m[2], " ,.:\n\r");
+                    $oferta = 6.00;
+
                     if (! empty($m[3])) {
                         $oferta = (float) str_replace(',', '.', $m[3]);
-                    }
-                } else {
-                    if (preg_match('/(?:s\/\.?\s*|por\s+|ofrezco\s+)(\d+(?:[\.,]\d+)?)/i', $textoCliente, $mPrecio)) {
+                    } elseif (preg_match('/(?:s\/\.?\s*|por\s+|oferta\s*:?\s*|ofrezco\s+)(\d+(?:[\.,]\d+)?)/i', $textoCliente, $mPrecio)) {
                         $oferta = (float) str_replace(',', '.', $mPrecio[1]);
                     }
-                    $destino = $textoCliente;
-                }
 
-                $viajeCreado = Supabase::table('solicitudes_viaje')->insert([
-                    'cliente_nombre' => $nombreContacto,
-                    'cliente_telefono' => $remitente,
-                    'origen_texto' => $origen,
-                    'origen_lat' => -12.0681,
-                    'origen_lng' => -75.2069,
-                    'destino_texto' => $destino,
-                    'destino_lat' => -12.0558,
-                    'destino_lng' => -75.2185,
-                    'tipo_servicio' => 'urbano',
-                    'oferta_cliente' => $oferta,
-                    'estado' => 'pendiente',
-                    'created_at' => now()->toIso8601String(),
-                    'updated_at' => now()->toIso8601String(),
-                ]);
-
-                $linkRastreo = url('/rastreo/'.($viajeCreado->id ?? 1));
-                $ofertaFmt = number_format($oferta, 2, '.', '');
-
-                Http::withoutVerifying()
-                    ->withToken($bearerToken)
-                    ->post("https://graph.facebook.com/v20.0/{$phoneId}/messages", [
-                        'messaging_product' => 'whatsapp',
-                        'to' => $remitente,
-                        'type' => 'text',
-                        'text' => [
-                            'body' => "🚖 *Taxi KALUZ - Solicitud Lanzada al Radar*\n\n".
-                                "📍 *Origen:* {$origen}\n".
-                                "🏁 *Destino:* {$destino}\n".
-                                "💵 *Tu oferta:* S/ {$ofertaFmt}\n\n".
-                                "Los conductores cercanos están viendo tu pedido. También puedes ver las contraofertas y el mapa GPS en vivo aquí:\n{$linkRastreo}",
-                        ],
+                    $viajeCreado = Supabase::table('solicitudes_viaje')->insert([
+                        'cliente_nombre' => $nombreContacto,
+                        'cliente_telefono' => $remitente,
+                        'origen_texto' => $origen,
+                        'origen_lat' => -12.0681,
+                        'origen_lng' => -75.2069,
+                        'destino_texto' => $destino,
+                        'destino_lat' => -12.0558,
+                        'destino_lng' => -75.2185,
+                        'tipo_servicio' => 'urbano',
+                        'oferta_cliente' => $oferta,
+                        'estado' => 'pendiente',
+                        'created_at' => now()->toIso8601String(),
+                        'updated_at' => now()->toIso8601String(),
                     ]);
+
+                    $linkRastreo = url('/rastreo/'.($viajeCreado->id ?? 1));
+                    $ofertaFmt = number_format($oferta, 2, '.', '');
+
+                    Http::withoutVerifying()
+                        ->withToken($bearerToken)
+                        ->post("https://graph.facebook.com/v20.0/{$phoneId}/messages", [
+                            'messaging_product' => 'whatsapp',
+                            'to' => $remitente,
+                            'type' => 'text',
+                            'text' => [
+                                'body' => "🚖 *¡Pedido registrado en Taxi KALUZ!*\n\n".
+                                    "📍 *Desde:* {$origen}\n".
+                                    "🏁 *A:* {$destino}\n".
+                                    "💵 *Oferta:* S/ {$ofertaFmt}\n\n".
+                                    "👉 *Ahora envíanos tu UBICACIÓN actual* (tocando el clip 📎 ➔ *Ubicación*) para asignarte a los conductores a menos de 2km.\n\n".
+                                    "🗺️ Ver ofertas y mapa GPS en vivo:\n{$linkRastreo}",
+                            ],
+                        ]);
+                } else {
+                    // Mensaje inicial / saludo cordial indicando cómo pedir su taxi y enviar ubicación
+                    Http::withoutVerifying()
+                        ->withToken($bearerToken)
+                        ->post("https://graph.facebook.com/v20.0/{$phoneId}/messages", [
+                            'messaging_product' => 'whatsapp',
+                            'to' => $remitente,
+                            'type' => 'text',
+                            'text' => [
+                                'body' => "👋 ¡Hola *{$nombreContacto}*! Bienvenido a *Taxi KALUZ Huancayo* 🚖✨\n\n".
+                                    "Para pedir tu taxi al instante y negociar tu tarifa, por favor respóndenos indicando tu ruta así:\n\n".
+                                    "📍 *Desde:* [Tu punto de partida]\n".
+                                    "🏁 *A:* [Tu destino]\n".
+                                    "💵 *Oferta:* S/ [Tu precio]\n\n".
+                                    "*Ejemplo:*\n".
+                                    "_Desde: Real Plaza A: El Tambo Oferta: S/ 6.00_\n\n".
+                                    "📌 *Y envíanos tu UBICACIÓN actual* (tocando el ícono del clip 📎 ➔ *Ubicación*) para conectar con los conductores más cercanos.\n\n".
+                                    '_(Si eres socio conductor, envía aquí la captura de tu Yape de S/ 1.00 para desbloquear tu radar)_.',
+                            ],
+                        ]);
+                }
             }
         }
     } catch (Throwable $e) {
