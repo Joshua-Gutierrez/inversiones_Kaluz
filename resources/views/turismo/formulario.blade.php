@@ -5,7 +5,7 @@
 
 @section('content')
     <div class="mx-auto max-w-4xl">
-        <form action="{{ $paquete ? route('turismo.update', ['id' => $paquete->id], false) : route('turismo.store', [], false) }}" method="POST" class="space-y-6" x-data="{ paradas: @js(old('paradas', $paradas)) }">
+        <form action="{{ $paquete ? route('turismo.update', ['id' => $paquete->id], false) : route('turismo.store', [], false) }}" method="POST" enctype="multipart/form-data" class="space-y-6" x-data="{ paradas: @js(old('paradas', $paradas)) }">
             @csrf
             @if ($paquete) @method('PUT') @endif
 
@@ -18,9 +18,13 @@
                     <label class="block text-sm font-semibold text-slate-700 md:col-span-2">Descripcion breve
                         <textarea name="descripcion" rows="3" required class="mt-1 w-full rounded-xl border-slate-300 focus:border-[#0B1B3D] focus:ring-[#0B1B3D]">{{ old('descripcion', $paquete?->descripcion) }}</textarea>
                     </label>
-                    <label class="block text-sm font-semibold text-slate-700 md:col-span-2">URL de foto de portada
-                        <input type="url" name="imagen_url" value="{{ old('imagen_url', $paquete?->imagen_url) }}" placeholder="https://..." class="mt-1 w-full rounded-xl border-slate-300 focus:border-[#0B1B3D] focus:ring-[#0B1B3D]">
-                        <span class="mt-1 block text-xs font-normal text-slate-500">Esta imagen se enviara junto al plan en WhatsApp.</span>
+                    <label class="block text-sm font-semibold text-slate-700 md:col-span-2">Foto de portada
+                        <input type="file" name="imagen" accept="image/jpeg,image/png,image/webp" class="mt-1 block w-full rounded-xl border border-slate-300 bg-white text-sm text-slate-700 file:mr-4 file:rounded-l-xl file:border-0 file:bg-[#0B1B3D] file:px-4 file:py-2 file:font-bold file:text-white hover:file:bg-slate-800">
+                        <span class="mt-1 block text-xs font-normal text-slate-500">Selecciona JPG, PNG o WEBP de hasta 5 MB. Esta imagen se enviara junto al plan en WhatsApp.</span>
+                        @if ($paquete?->imagen_url)
+                            <img src="{{ $paquete->imagen_url }}" alt="Portada actual" class="mt-3 h-32 w-48 rounded-xl object-cover">
+                        @endif
+                        @error('imagen') <span class="mt-1 block text-xs text-red-600">{{ $message }}</span> @enderror
                     </label>
                     <label class="block text-sm font-semibold text-slate-700">Duracion en horas
                         <input type="number" name="duracion_horas" min="1" max="24" value="{{ old('duracion_horas', $paquete?->duracion_horas) }}" required class="mt-1 w-full rounded-xl border-slate-300">

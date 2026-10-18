@@ -67,9 +67,9 @@ class PaqueteTuristicoController extends Controller
 
     public function update(Request $request, int $id): RedirectResponse
     {
-        $this->buscarPaquete($id);
+        $paquete = $this->buscarPaquete($id);
 
-        DB::table('paquetes_turisticos')->where('id', $id)->update($this->datosPaquete($request));
+        DB::table('paquetes_turisticos')->where('id', $id)->update($this->datosPaquete($request, $paquete->imagen_url));
 
         return redirect()->away('/turismo')->with('exito', 'El plan turistico fue actualizado correctamente.');
     }
@@ -111,6 +111,8 @@ class PaqueteTuristicoController extends Controller
             'destino_lat' => $destino['lat'],
             'destino_lng' => $destino['lng'],
             'tipo_servicio' => 'turismo',
+            'paquete_turistico_id' => $paquete->id,
+            'fecha_hora_servicio' => $datos['fecha_hora'],
             'precio_sugerido' => $paquete->precio_cerrado,
             'oferta_cliente' => $paquete->precio_cerrado,
             'precio_final' => $paquete->precio_cerrado,
@@ -162,12 +164,12 @@ class PaqueteTuristicoController extends Controller
     /**
      * @return array{titulo: string, descripcion: string, imagen_url: string|null, itinerario_paradas: string, duracion_horas: int, precio_cerrado: float, vehiculo_recomendado: string, activo: bool}
      */
-    private function datosPaquete(Request $request): array
+    private function datosPaquete(Request $request, ?string $imagenActual = null): array
     {
         $datos = $request->validate([
             'titulo' => ['required', 'string', 'max:150'],
             'descripcion' => ['required', 'string', 'max:1000'],
-            'imagen_url' => ['nullable', 'url', 'max:2048'],
+            'imagen' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'duracion_horas' => ['required', 'integer', 'min:1', 'max:24'],
             'precio_cerrado' => ['required', 'numeric', 'min:0'],
             'vehiculo_recomendado' => ['required', 'in:propia_combi,propia_auto'],
@@ -179,14 +181,23 @@ class PaqueteTuristicoController extends Controller
         ], [
             'titulo.required' => 'Ingresa el nombre del plan.',
             'descripcion.required' => 'Ingresa una descripcion para el chatbot.',
-            'imagen_url.url' => 'La portada debe ser una URL valida.',
+            'imagen.image' => 'La portada debe ser una imagen valida.',
+            'imagen.mimes' => 'La portada debe ser JPG, PNG o WEBP.',
+            'imagen.max' => 'La portada no debe superar los 5 MB.',
             'paradas.min' => 'El itinerario debe tener al menos dos paradas.',
         ]);
+
+        $imagenUrl = $imagenActual;
+
+        if ($request->hasFile('imagen')) {
+            $ruta = $request->file('imagen')->store('turismo', 'public');
+            $imagenUrl = '/storage/'.$ruta;
+        }
 
         return [
             'titulo' => $datos['titulo'],
             'descripcion' => $datos['descripcion'],
-            'imagen_url' => $datos['imagen_url'] ?: null,
+            'imagen_url' => $imagenUrl,
             'itinerario_paradas' => json_encode($datos['paradas'], JSON_THROW_ON_ERROR),
             'duracion_horas' => $datos['duracion_horas'],
             'precio_cerrado' => $datos['precio_cerrado'],

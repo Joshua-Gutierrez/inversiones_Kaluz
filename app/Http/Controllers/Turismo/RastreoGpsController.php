@@ -84,6 +84,7 @@ class RastreoGpsController extends Controller
                 'viaje.destino_lat',
                 'viaje.destino_lng',
                 'viaje.tipo_servicio',
+                'viaje.paquete_turistico_id',
                 'viaje.conductor_id',
                 'viaje.estado',
                 'conductor.nombre',
@@ -108,6 +109,16 @@ class RastreoGpsController extends Controller
     private function obtenerParadas(object $viaje): array
     {
         if ($viaje->tipo_servicio === 'turismo') {
+            if ($viaje->paquete_turistico_id !== null) {
+                $paquete = DB::table('paquetes_turisticos')
+                    ->where('id', $viaje->paquete_turistico_id)
+                    ->value('itinerario_paradas');
+
+                if ($paquete !== null) {
+                    return json_decode((string) $paquete, true, flags: JSON_THROW_ON_ERROR);
+                }
+            }
+
             foreach (DB::table('paquetes_turisticos')->select('itinerario_paradas')->get() as $paquete) {
                 $paradas = json_decode((string) $paquete->itinerario_paradas, true, flags: JSON_THROW_ON_ERROR);
                 $ultimaParada = $paradas[array_key_last($paradas)];
