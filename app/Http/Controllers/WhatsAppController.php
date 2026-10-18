@@ -187,6 +187,31 @@ class WhatsAppController extends Controller
                 ], 200);
             }
 
+            // Si el pasajero responde a los botones interactivos de contraoferta (Aceptar / Rechazar)
+            if ($tipo === 'interactive') {
+                $botonId = (string) ($message['interactive']['button_reply']['id'] ?? '');
+
+                if ($botonId === 'btn_aceptar_oferta') {
+                    // Simulación de actualización en Supabase: estado = 'viaje_aceptado'
+                    $this->enviarMensajeWhatsApp(
+                        $remitente,
+                        '🎉 ¡Viaje confirmado! El taxi está en camino.'
+                    );
+
+                    return response()->json(['status' => 'OFFER_ACCEPTED'], 200);
+                }
+
+                if ($botonId === 'btn_rechazar_oferta') {
+                    // Simulación de actualización en Supabase: estado = 'buscando'
+                    $this->enviarMensajeWhatsApp(
+                        $remitente,
+                        'Buscando otros conductores con tu tarifa original...'
+                    );
+
+                    return response()->json(['status' => 'OFFER_REJECTED'], 200);
+                }
+            }
+
             // Si envía texto u otro tipo de mensaje, responder con guía rápida
             if ($tipo === 'text') {
                 $cuerpoTexto = trim((string) data_get($message, 'text.body', ''));

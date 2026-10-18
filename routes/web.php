@@ -45,6 +45,53 @@ if (! function_exists('calcularDistanciaHaversine')) {
     }
 }
 
+if (! function_exists('enviarContraofertaInteractiva')) {
+    /**
+     * Envía una contraoferta estilo inDrive al pasajero por WhatsApp con botones interactivos (Meta API v20.0).
+     */
+    function enviarContraofertaInteractiva(string $numeroPasajero, string $nombreChofer, float|string $monto): bool
+    {
+        $bearerToken = (string) env('META_WA_BEARER_TOKEN');
+        $phoneId = (string) env('META_WA_PHONE_NUMBER_ID');
+        $montoFormateado = number_format((float) $monto, 2, '.', '');
+
+        $response = Http::withoutVerifying()
+            ->withToken($bearerToken)
+            ->post("https://graph.facebook.com/v20.0/{$phoneId}/messages", [
+                'messaging_product' => 'whatsapp',
+                'recipient_type' => 'individual',
+                'to' => $numeroPasajero,
+                'type' => 'interactive',
+                'interactive' => [
+                    'type' => 'button',
+                    'body' => [
+                        'text' => "🚕 El conductor {$nombreChofer} ofrece llevarte por S/ {$montoFormateado}. ¿Qué decides?",
+                    ],
+                    'action' => [
+                        'buttons' => [
+                            [
+                                'type' => 'reply',
+                                'reply' => [
+                                    'id' => 'btn_aceptar_oferta',
+                                    'title' => '✅ Aceptar',
+                                ],
+                            ],
+                            [
+                                'type' => 'reply',
+                                'reply' => [
+                                    'id' => 'btn_rechazar_oferta',
+                                    'title' => '❌ Rechazar',
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+
+        return $response->successful();
+    }
+}
+
 Route::post('/webhook', function (Request $request) {
     try {
         $body = $request->all();
@@ -174,6 +221,57 @@ Route::post('/webhook', function (Request $request) {
                         'type' => 'text',
                         'text' => [
                             'body' => '📍 Ubicación recibida. Buscando conductores a menos de 2km...',
+                        ],
+                    ]);
+            }
+        } elseif (is_array($mensaje) && ($mensaje['type'] ?? '') === 'interactive') {
+            $remitente = (string) ($mensaje['from'] ?? '');
+            $botonId = (string) ($mensaje['interactive']['button_reply']['id'] ?? '');
+            $bearerToken = (string) env('META_WA_BEARER_TOKEN');
+            $phoneId = (string) env('META_WA_PHONE_NUMBER_ID');
+
+            if ($botonId === 'btn_aceptar_oferta') {
+                /*
+                 * SIMULACIÓN DE ACTUALIZACIÓN EN SUPABASE (ESTADO = 'viaje_aceptado'):
+                 * Http::withHeaders([
+                 *     'apikey' => env('SUPABASE_KEY'),
+                 *     'Authorization' => 'Bearer ' . env('SUPABASE_KEY'),
+                 *     'Content-Type' => 'application/json',
+                 * ])->patch(env('SUPABASE_URL') . '/rest/v1/solicitudes_viaje?cliente_telefono=eq.' . $remitente, [
+                 *     'estado' => 'viaje_aceptado',
+                 * ]);
+                 */
+
+                Http::withoutVerifying()
+                    ->withToken($bearerToken)
+                    ->post("https://graph.facebook.com/v20.0/{$phoneId}/messages", [
+                        'messaging_product' => 'whatsapp',
+                        'to' => $remitente,
+                        'type' => 'text',
+                        'text' => [
+                            'body' => '🎉 ¡Viaje confirmado! El taxi está en camino.',
+                        ],
+                    ]);
+            } elseif ($botonId === 'btn_rechazar_oferta') {
+                /*
+                 * SIMULACIÓN DE ACTUALIZACIÓN EN SUPABASE (ESTADO = 'buscando'):
+                 * Http::withHeaders([
+                 *     'apikey' => env('SUPABASE_KEY'),
+                 *     'Authorization' => 'Bearer ' . env('SUPABASE_KEY'),
+                 *     'Content-Type' => 'application/json',
+                 * ])->patch(env('SUPABASE_URL') . '/rest/v1/solicitudes_viaje?cliente_telefono=eq.' . $remitente, [
+                 *     'estado' => 'buscando',
+                 * ]);
+                 */
+
+                Http::withoutVerifying()
+                    ->withToken($bearerToken)
+                    ->post("https://graph.facebook.com/v20.0/{$phoneId}/messages", [
+                        'messaging_product' => 'whatsapp',
+                        'to' => $remitente,
+                        'type' => 'text',
+                        'text' => [
+                            'body' => 'Buscando otros conductores con tu tarifa original...',
                         ],
                     ]);
             }
