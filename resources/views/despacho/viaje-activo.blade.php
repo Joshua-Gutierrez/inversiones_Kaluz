@@ -115,7 +115,7 @@
         </button>
 
         <button
-            x-show="estado === 'en_ruta'"
+            x-show="estado === 'en_ruta' || estado === 'asignado'"
             type="button"
             @click="cambiarEstado('completado')"
             :disabled="enviando"

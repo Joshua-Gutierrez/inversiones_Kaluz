@@ -1,9 +1,9 @@
 /*
  * Taxi KALUZ Conductor - Service Worker
  * Estrategia: cachea el shell/estáticos; las llamadas a la API van SIEMPRE a la red
- * (el radar necesita datos frescos: polling cada 3 s).
+ * (el radar y el rastreo de pasajeros necesitan datos frescos en tiempo real).
  */
-const CACHE_SHELL = 'kaluz-conductor-shell-v1';
+const CACHE_SHELL = 'kaluz-conductor-shell-v2';
 
 const SHELL_URLS = [
     '/manifest.json',
@@ -32,8 +32,15 @@ self.addEventListener('fetch', (event) => {
 
     const url = new URL(request.url);
 
-    // API del radar y acciones: siempre red, nunca caché.
-    if (url.pathname.startsWith('/conductor/api/')) {
+    // API del radar, rastreo en vivo, estado y acciones dinámicas: SIEMPRE RED DIRECTA, NUNCA CACHÉ.
+    if (
+        url.pathname.startsWith('/conductor/api/') ||
+        url.pathname.startsWith('/api/') ||
+        url.pathname.includes('/posicion') ||
+        url.pathname.includes('/estado') ||
+        url.searchParams.has('_t') ||
+        (request.headers.get('Accept') && request.headers.get('Accept').includes('application/json'))
+    ) {
         event.respondWith(fetch(request));
         return;
     }
@@ -46,8 +53,15 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Estáticos propios: cache-first.
-    if (url.origin === self.location.origin) {
+    // Solo estáticos propios (build, imágenes, iconos, fuentes): cache-first.
+    if (
+        url.origin === self.location.origin &&
+        (url.pathname.startsWith('/build/') ||
+         url.pathname.startsWith('/icons/') ||
+         url.pathname.startsWith('/images/') ||
+         url.pathname === '/manifest.json' ||
+         url.pathname === '/favicon.ico')
+    ) {
         event.respondWith(
             caches.match(request).then((cached) => cached || fetch(request).then((response) => {
                 if (response && response.status === 200 && response.type === 'basic') {

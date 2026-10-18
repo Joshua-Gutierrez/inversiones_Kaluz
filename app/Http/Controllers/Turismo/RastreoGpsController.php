@@ -48,7 +48,10 @@ class RastreoGpsController extends Controller
             ],
             'ofertas' => $ofertas,
             'actualizado_en' => $viaje->conductor_actualizado_en,
-        ]);
+        ])
+        ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        ->header('Pragma', 'no-cache')
+        ->header('Expires', '0');
     }
 
     /**

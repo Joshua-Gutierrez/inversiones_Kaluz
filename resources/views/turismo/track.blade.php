@@ -43,7 +43,7 @@
     class="space-y-3.5"
 >
     <!-- PANTALLA DE VIAJE FINALIZADO (Se muestra automáticamente cuando el taxista presiona "Finalizar viaje") -->
-    <template x-if="estado === 'completado'">
+    <div x-show="estado === 'completado'" x-cloak x-transition>
         <div x-transition class="bg-[#111E3B] rounded-3xl border border-emerald-500/40 p-6 text-center shadow-2xl space-y-5 my-4">
             <div class="w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center mx-auto shadow-[0_0_28px_rgba(16,185,129,0.45)]">
                 <i class="ri-checkbox-circle-fill text-5xl text-emerald-400"></i>
@@ -115,10 +115,10 @@
                 </button>
             </div>
         </div>
-    </template>
+    </div>
 
     <!-- PANTALLA DE VIAJE CANCELADO -->
-    <template x-if="estado === 'cancelado'">
+    <div x-show="estado === 'cancelado'" x-cloak x-transition>
         <div x-transition class="bg-[#111E3B] rounded-3xl border border-red-500/40 p-6 text-center shadow-2xl space-y-4 my-4">
             <div class="w-16 h-16 rounded-full bg-red-500/20 border border-red-400/50 flex items-center justify-center mx-auto text-red-400">
                 <i class="ri-error-warning-fill text-4xl"></i>
@@ -131,7 +131,7 @@
                 <span>Solicitar otro Taxi</span>
             </a>
         </div>
-    </template>
+    </div>
 
     <!-- VISTA ACTIVA MIENTRAS EL VIAJE ESTÁ EN SUBASTA / ASIGNADO / EN RUTA -->
     <div x-show="estado !== 'completado' && estado !== 'cancelado'" class="space-y-3.5">
@@ -331,7 +331,7 @@
                 this.iniciarMapa();
                 this.obtenerGpsCliente();
                 this.actualizarRutaYDistancia();
-                this.timer = setInterval(() => this.consultarPosicion(), 3500);
+                this.timer = setInterval(() => this.consultarPosicion(), 2000);
             },
 
             ucfirst(t) {
@@ -472,7 +472,15 @@
 
             async consultarPosicion() {
                 try {
-                    const r = await fetch(cfg.posicionUrl, { headers: { 'Accept': 'application/json' } });
+                    const sep = cfg.posicionUrl.includes('?') ? '&' : '?';
+                    const url = cfg.posicionUrl + sep + '_t=' + Date.now();
+                    const r = await fetch(url, {
+                        cache: 'no-store',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Cache-Control': 'no-cache, no-store',
+                        }
+                    });
                     if (!r.ok) return;
                     const d = await r.json();
 
@@ -487,8 +495,11 @@
                             clearInterval(this.timer);
                             this.timer = null;
                         }
-                        if (estadoAnterior !== d.estado && navigator.vibrate) {
-                            navigator.vibrate([150, 80, 150]);
+                        if (estadoAnterior !== d.estado) {
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                            if (navigator.vibrate) {
+                                navigator.vibrate([150, 80, 150]);
+                            }
                         }
                         return;
                     }

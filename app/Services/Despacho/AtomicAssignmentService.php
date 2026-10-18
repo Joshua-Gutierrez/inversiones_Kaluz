@@ -30,7 +30,7 @@ class AtomicAssignmentService
      * Transiciones válidas de estado del viaje (asignado → en_ruta → completado).
      */
     private const TRANSICIONES_VALIDAS = [
-        'asignado' => ['en_ruta', 'cancelado'],
+        'asignado' => ['en_ruta', 'completado', 'cancelado'],
         'en_ruta' => ['completado', 'cancelado'],
     ];
 
