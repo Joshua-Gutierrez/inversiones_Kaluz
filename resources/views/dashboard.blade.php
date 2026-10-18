@@ -372,9 +372,9 @@
         const mapa = L.map(contenedor, {
             zoomControl: true,
             attributionControl: true,
-        }).setView(centroHuancayo, 14);
+        }).setView(centroHuancayo, 15);
 
-        // Mismo mapa OpenStreetMap que las demás ventanas de la PWA
+        // Exactamente el mismo mapa OpenStreetMap usado en viaje-activo y track
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '&copy; OpenStreetMap',
@@ -383,17 +383,12 @@
         // Pin Central Taxi KALUZ
         const iconoCentralKaluz = L.divIcon({
             className: '',
-            html: `
-                <div style="position:relative;width:46px;height:46px;border-radius:50%;background:#08142C;border:3px solid #fff;box-shadow:0 6px 16px rgba(8,20,44,0.45);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:Montserrat,sans-serif;line-height:1;">
-                    <span style="font-size:8px;font-weight:700;color:#FACC15;">Taxi</span>
-                    <span style="font-size:10px;font-weight:900;letter-spacing:0.5px;">KALUZ</span>
-                </div>
-            `,
-            iconSize: [46, 46],
-            iconAnchor: [23, 23],
+            html: `<div style="width:36px;height:36px;border-radius:50%;background:#0A1329;border:3px solid #fff;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(10,19,41,0.55);font-family:Montserrat,sans-serif;line-height:1;"><span style="font-size:7px;font-weight:700;color:#FACC15;">TAXI</span><span style="font-size:8px;font-weight:900;">KALUZ</span></div>`,
+            iconSize: [36, 36],
+            iconAnchor: [18, 18],
         });
 
-        L.marker([-12.0651, -75.2049], { icon: iconoCentralKaluz })
+        L.marker(centroHuancayo, { icon: iconoCentralKaluz })
             .addTo(mapa)
             .bindPopup('<strong>Central Taxi KALUZ</strong><br>Parque Constitución • Huancayo');
 
@@ -402,65 +397,36 @@
         const marcadoresUnidades = new Map();
         const lineasServicio = new Map();
         const marcadoresDestinos = new Map();
+        const cacheRutasOsrm = new Map();
 
+        // Mismos iconos circulares limpios de 34x34px que en track.blade.php y viaje-activo.blade.php
         function crearIconoUnidad(u) {
             if (u.en_servicio) {
-                // Unidad haciendo servicio activo (verde esmeralda con pulso y placa visible)
                 return L.divIcon({
                     className: '',
-                    html: `
-                        <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-8px);">
-                            <div style="background:#059669;color:#fff;font-family:Montserrat,sans-serif;font-size:9px;font-weight:800;padding:2px 6px;border-radius:999px;border:1.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap;margin-bottom:2px;display:flex;align-items:center;gap:3px;">
-                                <span style="width:6px;height:6px;border-radius:50%;background:#A7F3D0;display:inline-block;"></span>
-                                <span>${u.placa} • EN SERVICIO</span>
-                            </div>
-                            <div style="width:36px;height:36px;border-radius:50%;background:#059669;border:3px solid #fff;box-shadow:0 4px 12px rgba(5,150,105,0.55);display:flex;align-items:center;justify-content:center;color:#fff;">
-                                <i class="ri-taxi-fill" style="font-size:18px;"></i>
-                            </div>
-                        </div>
-                    `,
-                    iconSize: [110, 56],
-                    iconAnchor: [55, 42],
-                    popupAnchor: [0, -36],
+                    html: `<div style="width:34px;height:34px;border-radius:50%;background:#10B981;border:3px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(16,185,129,0.65);"><i class="ri-taxi-fill" style="font-size:17px;"></i></div>`,
+                    iconSize: [34, 34],
+                    iconAnchor: [17, 17],
+                    popupAnchor: [0, -17],
                 });
             }
 
             if (u.habilitado) {
-                // Unidad habilitada en radar con GPS activo
                 return L.divIcon({
                     className: '',
-                    html: `
-                        <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-6px);">
-                            <div style="background:#08142C;color:#fff;font-family:Montserrat,sans-serif;font-size:9px;font-weight:800;padding:1.5px 6px;border-radius:999px;border:1.5px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.25);white-space:nowrap;margin-bottom:2px;">
-                                ${u.placa}
-                            </div>
-                            <div style="width:32px;height:32px;border-radius:50%;background:#D91B23;border:2.5px solid #fff;box-shadow:0 4px 10px rgba(217,27,35,0.45);display:flex;align-items:center;justify-content:center;color:#fff;">
-                                <i class="ri-taxi-line" style="font-size:15px;"></i>
-                            </div>
-                        </div>
-                    `,
-                    iconSize: [76, 50],
-                    iconAnchor: [38, 38],
-                    popupAnchor: [0, -32],
+                    html: `<div style="width:34px;height:34px;border-radius:50%;background:#D91B23;border:3px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(217,27,35,0.6);"><i class="ri-taxi-fill" style="font-size:17px;"></i></div>`,
+                    iconSize: [34, 34],
+                    iconAnchor: [17, 17],
+                    popupAnchor: [0, -17],
                 });
             }
 
-            // Unidad bloqueada por candado financiero
             return L.divIcon({
                 className: '',
-                html: `
-                    <div style="display:flex;flex-direction:column;align-items:center;opacity:0.78;">
-                        <div style="background:#475569;color:#fff;font-family:Montserrat,sans-serif;font-size:8px;font-weight:700;padding:1px 5px;border-radius:999px;border:1px solid #fff;white-space:nowrap;margin-bottom:2px;">
-                            ${u.placa}
-                        </div>
-                        <div style="width:28px;height:28px;border-radius:50%;background:#64748B;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;color:#fff;">
-                            <i class="ri-lock-fill" style="font-size:13px;"></i>
-                        </div>
-                    </div>
-                `,
-                iconSize: [64, 44],
-                iconAnchor: [32, 34],
-                popupAnchor: [0, -28],
+                html: `<div style="width:30px;height:30px;border-radius:50%;background:#64748B;border:3px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.3);"><i class="ri-lock-fill" style="font-size:14px;"></i></div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15],
+                popupAnchor: [0, -15],
             });
         }
 
@@ -470,7 +436,7 @@
                     <div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.45;min-width:210px;">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
                             <strong style="color:#08142C;font-size:13px;">${u.nombre}</strong>
-                            <span style="background:#059669;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:999px;">EN SERVICIO</span>
+                            <span style="background:#10B981;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:999px;">EN SERVICIO</span>
                         </div>
                         <div style="color:#475569;font-size:11px;margin-bottom:6px;">
                             <strong>${u.placa}</strong> • ${u.modelo_vehiculo}
@@ -495,7 +461,7 @@
                     <strong style="color:#08142C;font-size:13px;">${u.nombre}</strong><br>
                     <span style="color:#475569;font-size:11px;"><strong>${u.placa}</strong> • ${u.modelo_vehiculo}</span><br>
                     <span style="color:${u.habilitado ? '#059669' : '#DC2626'};font-weight:700;font-size:11px;">
-                        ${u.habilitado ? '● Disponible en Radar (GPS PWA Activo)' : '● Bloqueado (Candado S/ 1.00)'}
+                        ${u.habilitado ? '● Disponible en Servicio (GPS PWA Activo)' : '● Bloqueado (Candado S/ 1.00)'}
                     </span>
                     <div style="font-size:10px;color:#64748B;margin-top:4px;">
                         Coord: ${u.lat}, ${u.lng}
@@ -510,9 +476,33 @@
             return true;
         }
 
-        function renderizarFlota() {
-            const idsVisibles = new Set();
+        // Trazado real por calles con OSRM igual que en viaje-activo.blade.php y track.blade.php
+        function trazarRutaCalleOsrm(unidadId, desdeLat, desdeLng, hastaLat, hastaLng, lineaLayer) {
+            const clave = `${desdeLat.toFixed(4)},${desdeLng.toFixed(4)}->${hastaLat.toFixed(4)},${hastaLng.toFixed(4)}`;
+            if (cacheRutasOsrm.has(clave)) {
+                lineaLayer.setLatLngs(cacheRutasOsrm.get(clave));
+                return;
+            }
 
+            const url = `https://router.project-osrm.org/route/v1/driving/${desdeLng},${desdeLat};${hastaLng},${hastaLat}?overview=full&geometries=geojson`;
+            fetch(url)
+                .then(r => r.json())
+                .then(datos => {
+                    const ruta = datos && datos.routes && datos.routes[0];
+                    if (ruta && ruta.geometry) {
+                        const coords = ruta.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+                        cacheRutasOsrm.set(clave, coords);
+                        lineaLayer.setLatLngs(coords);
+                    } else {
+                        lineaLayer.setLatLngs([[desdeLat, desdeLng], [hastaLat, hastaLng]]);
+                    }
+                })
+                .catch(() => {
+                    lineaLayer.setLatLngs([[desdeLat, desdeLng], [hastaLat, hastaLng]]);
+                });
+        }
+
+        function renderizarFlota() {
             flotaDatos.forEach((u) => {
                 if (!cumpleFiltro(u)) {
                     if (marcadoresUnidades.has(u.id)) {
@@ -530,8 +520,12 @@
                     return;
                 }
 
-                idsVisibles.add(u.id);
-                const latLng = [parseFloat(u.lat), parseFloat(u.lng)];
+                const lat = parseFloat(u.lat);
+                const lng = parseFloat(u.lng);
+                const latLng = [lat, lng];
+                const textoTooltip = u.en_servicio
+                    ? `${u.placa} • EN SERVICIO`
+                    : `${u.placa} • ${u.nombre.split(' ')[0]}`;
 
                 if (marcadoresUnidades.has(u.id)) {
                     const m = marcadoresUnidades.get(u.id);
@@ -541,33 +535,36 @@
                 } else {
                     const m = L.marker(latLng, { icon: crearIconoUnidad(u) })
                         .addTo(mapa)
+                        .bindTooltip(textoTooltip, {
+                            permanent: true,
+                            direction: 'top',
+                            offset: [0, -18],
+                            className: 'kaluz-placa-tooltip',
+                        })
                         .bindPopup(crearPopupUnidad(u));
                     marcadoresUnidades.set(u.id, m);
                 }
 
-                // Si la unidad está haciendo un servicio activo, trazar la línea hacia su objetivo (recojo o destino)
                 if (u.en_servicio && u.viaje) {
-                    const destLat = u.viaje.estado === 'en_ruta' ? u.viaje.destino_lat : u.viaje.origen_lat;
-                    const destLng = u.viaje.estado === 'en_ruta' ? u.viaje.destino_lng : u.viaje.origen_lng;
-                    const puntos = [latLng, [destLat, destLng]];
+                    const destLat = parseFloat(u.viaje.estado === 'en_ruta' ? u.viaje.destino_lat : u.viaje.origen_lat);
+                    const destLng = parseFloat(u.viaje.estado === 'en_ruta' ? u.viaje.destino_lng : u.viaje.origen_lng);
 
-                    if (lineasServicio.has(u.id)) {
-                        lineasServicio.get(u.id).setLatLngs(puntos);
-                    } else {
-                        const linea = L.polyline(puntos, {
-                            color: '#059669',
-                            weight: 4,
+                    let linea = lineasServicio.get(u.id);
+                    if (!linea) {
+                        linea = L.polyline([latLng, [destLat, destLng]], {
+                            color: '#0A1329',
+                            weight: 5,
                             opacity: 0.85,
-                            dashArray: '8, 6',
                         }).addTo(mapa);
                         lineasServicio.set(u.id, linea);
                     }
+                    trazarRutaCalleOsrm(u.id, lat, lng, destLat, destLng, linea);
 
                     const iconoObj = L.divIcon({
                         className: '',
-                        html: `<div style="width:24px;height:24px;border-radius:50%;background:#08142C;border:2px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.3);font-size:11px;font-weight:800;">${u.viaje.estado === 'en_ruta' ? 'B' : 'A'}</div>`,
-                        iconSize: [24, 24],
-                        iconAnchor: [12, 12],
+                        html: `<div style="width:26px;height:26px;border-radius:50%;background:#E31B23;border:3px solid #fff;color:#fff;font:900 12px/20px Inter,sans-serif;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.35)">${u.viaje.estado === 'en_ruta' ? 'B' : 'A'}</div>`,
+                        iconSize: [26, 26],
+                        iconAnchor: [13, 13],
                     });
 
                     if (marcadoresDestinos.has(u.id)) {
@@ -611,20 +608,15 @@
             if (!cumpleFiltro(u)) {
                 window.filtrarMapaKaluz('todos');
             }
-            mapa.flyTo([parseFloat(u.lat), parseFloat(u.lng)], 16, { duration: 0.8 });
+            mapa.flyTo([parseFloat(u.lat), parseFloat(u.lng)], 16, { duration: 0.7 });
             const marcador = marcadoresUnidades.get(id);
             if (marcador) {
-                setTimeout(() => marcador.openPopup(), 400);
+                setTimeout(() => marcador.openPopup(), 350);
             }
         };
 
         window.centrarMapaKaluz = () => {
-            if (marcadoresUnidades.size > 0) {
-                const grupo = L.featureGroup(Array.from(marcadoresUnidades.values()));
-                mapa.fitBounds(grupo.getBounds(), { padding: [45, 45], maxZoom: 15 });
-            } else {
-                mapa.setView(centroHuancayo, 14, { animate: true });
-            }
+            mapa.setView(centroHuancayo, 15, { animate: true });
         };
 
         async function actualizarTelemetriaFlota() {
@@ -656,13 +648,13 @@
                 if (elLabelServicio) elLabelServicio.textContent = enServicioCount + ' en carrera ahora';
                 if (elEstadoMapa) {
                     const ahora = new Date();
-                    elEstadoMapa.textContent = 'GPS PWA actualizado ' + ahora.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    elEstadoMapa.textContent = 'GPS PWA en vivo • ' + ahora.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 }
             } catch (e) {}
         }
 
         renderizarFlota();
-        window.centrarMapaKaluz();
+        setTimeout(() => mapa.invalidateSize(), 200);
         setInterval(actualizarTelemetriaFlota, 4000);
     });
 </script>

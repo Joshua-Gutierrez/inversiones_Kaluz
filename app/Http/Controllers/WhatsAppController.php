@@ -342,6 +342,35 @@ class WhatsAppController extends Controller
                     return response('EVENT_RECEIVED', 200);
                 }
 
+                // OPCIÓN 2 o B: Catálogo de Paquetes Turísticos precargados en la web (con foto y resaltando siempre el servicio de Taxi)
+                $esOpcionTurismo = (bool) preg_match('/^(?:2|b|opci[oó]n\s*2|opci[oó]n\s*b|2️⃣|turismo|tour|tours|paquetes|paquetes\s+tur[ií]sticos|ver\s+turismo|viajes\s+tur[ií]sticos)$/iu', $cuerpoTexto);
+                if ($esOpcionTurismo) {
+                    $this->enviarCatalogoTurismoWhatsApp($remitente);
+
+                    return response('EVENT_RECEIVED', 200);
+                }
+
+                // OPCIÓN 1 o A: Servicio Principal de Taxi Urbano
+                $esOpcionTaxi = (bool) preg_match('/^(?:1|a|opci[oó]n\s*1|opci[oó]n\s*a|1️⃣|pedir\s+taxi|quiero\s+un\s+taxi|quiero\s+taxi|servicio\s+de\s+taxi)$/iu', $cuerpoTexto);
+                if ($esOpcionTaxi) {
+                    $this->enviarMensajeWhatsApp(
+                        $remitente,
+                        "🚕 *¡Servicio Principal de Taxi KALUZ Huancayo!*\n".
+                        "Nuestras unidades con GPS en vivo están listas cerca de ti las 24 horas.\n\n".
+                        "📍 *Escríbeme en un solo mensaje desde dónde y hacia dónde vas:*\n".
+                        '_(Ejemplo: De Universidad Continental a Real Plaza)_'
+                    );
+
+                    return response('EVENT_RECEIVED', 200);
+                }
+
+                // Reserva directa de un Paquete Turístico por WhatsApp (ej. "Reservar City Tour VIP en Auto")
+                if (preg_match('/^(?:reservar|quiero\s+el\s+tour|tour)\s+(.+)$/iu', $cuerpoTexto, $mReservaTour)) {
+                    if ($this->procesarReservaTurismoWhatsApp($remitente, $nombreContacto, trim($mReservaTour[1]))) {
+                        return response('EVENT_RECEIVED', 200);
+                    }
+                }
+
                 // Soporte adicional si el cliente escribe "Aceptar" o "Acepto" en texto
                 if (preg_match('/^(acepto|aceptar|si\s+acepto|s[ií]\s+acepto|confirmar)$/iu', $cuerpoTexto)) {
                     $ultimaSolicitud = Supabase::table('solicitudes_viaje')
@@ -500,9 +529,15 @@ class WhatsAppController extends Controller
                 // FLUJO 1 - Paso 1: El Saludo y la Solicitud (cuando el cliente escribe "Hola" o cualquier primer mensaje)
                 $this->enviarMensajeWhatsApp(
                     $remitente,
-                    "🚕 ¡Hola! Bienvenido a Taxi KALUZ Huancayo.\n\n".
-                    "Para empezar, escríbeme en un solo mensaje desde dónde y hacia dónde vas.\n".
-                    '(Ejemplo: De Real Plaza a Parque de la Identidad)'
+                    "🚕 *¡Hola! Bienvenido a Taxi KALUZ Huancayo*\n".
+                    "⭐ *Tu Servicio Principal de Taxi Urbano Seguro 24/7*\n\n".
+                    "¿Qué servicio deseas solicitar hoy?\n\n".
+                    "1️⃣ *OPCIÓN 1 (o A) — 🚕 PEDIR UN TAXI AHORA (Servicio Principal)*\n".
+                    "Escríbeme directamente desde dónde y hacia dónde vas en un solo mensaje.\n".
+                    "👉 _Ejemplo: De Real Plaza a Parque de la Identidad_\n\n".
+                    "2️⃣ *OPCIÓN 2 (o B) — 🏞️ PAQUETES DE TURISMO KALUZ*\n".
+                    "Responde *2* o *B* para recibir nuestros tours precargados en el Valle del Mantaro con fotos, destinos y tarifas.\n\n".
+                    "⚡ _Recuerda: Para un taxi inmediato en Huancayo, solo escribe tu ruta o responde *1*._"
                 );
             }
 
@@ -710,6 +745,216 @@ class WhatsAppController extends Controller
                 'text' => [
                     'preview_url' => false,
                     'body' => $texto,
+                ],
+            ]);
+
+        return $response->successful();
+    }
+
+    /**
+     * Extrae en tiempo real los paquetes configurados en la ventana web (/turismo -> tabla paquetes_turisticos)
+     * y los envía por WhatsApp incluyendo su fotografía, resaltando siempre el servicio principal de Taxi.
+     */
+    protected function enviarCatalogoTurismoWhatsApp(string $destinatario): void
+    {
+        try {
+            $paquetes = collect(
+                Supabase::table('paquetes_turisticos')
+                    ->where('activo', true)
+                    ->orderBy('id', 'desc')
+                    ->get()
+            );
+        } catch (Throwable) {
+            $paquetes = collect();
+        }
+
+        if ($paquetes->isEmpty()) {
+            $this->enviarMensajeWhatsApp(
+                $destinatario,
+                "🏞️ *TURISMO KALUZ HUANCAYO*\n\n".
+                "En este momento estamos actualizando nuestros paquetes turísticos en el Valle del Mantaro.\n\n".
+                "🚕 *¡Pero nuestro Servicio Principal de TAXI URBANO 24/7 está 100% activo!*\n".
+                "Escríbeme desde dónde y hacia dónde vas para enviarte una unidad de inmediato:\n".
+                '👉 _Ejemplo: De Real Plaza a Parque de la Identidad_'
+            );
+
+            return;
+        }
+
+        $this->enviarMensajeWhatsApp(
+            $destinatario,
+            "🏞️ *PAQUETES TURÍSTICOS KALUZ — VALLE DEL MANTARO*\n".
+            "✨ _Extraídos en vivo desde nuestra central web de Turismo_\n\n".
+            "🚕 *Recuerda que nuestro servicio estrella es el TAXI URBANO INMEDIATO 24/7 en todo Huancayo.* ".
+            "En cualquier momento puedes pedir tu taxi escribiendo tu ruta (Ej: _De Real Plaza a El Tambo_).\n\n".
+            "📸 A continuación te enviamos nuestros *{$paquetes->count()} paquetes turísticos disponibles* con su foto e itinerario:"
+        );
+
+        $baseUrl = rtrim((string) config('app.url', 'https://inversiones-kaluz.vercel.app'), '/');
+        if (str_contains($baseUrl, 'localhost') || str_contains($baseUrl, '127.0.0.1')) {
+            $baseUrl = 'https://inversiones-kaluz.vercel.app';
+        } elseif (str_starts_with($baseUrl, 'http://')) {
+            $baseUrl = 'https://'.substr($baseUrl, 7);
+        }
+
+        foreach ($paquetes->values() as $idx => $paquete) {
+            $num = $idx + 1;
+            $idPaquete = (int) ($paquete->id ?? $num);
+            $nombre = trim((string) ($paquete->nombre ?? 'Tour Valle del Mantaro'));
+            $descripcion = trim((string) ($paquete->descripcion ?? 'Recorrido turístico privado con chofer guía.'));
+            $tipoVehiculo = strtoupper(trim((string) ($paquete->tipo_vehiculo ?? 'AUTO')));
+            $duracion = (float) ($paquete->duracion_horas ?? 4);
+            $duracionFmt = rtrim(rtrim(number_format($duracion, 1, '.', ''), '0'), '.');
+            $precio = number_format((float) ($paquete->precio ?? 80), 2);
+
+            $destinosRaw = $paquete->destinos ?? [];
+            if (is_string($destinosRaw)) {
+                $decoded = json_decode($destinosRaw, true);
+                $destinosList = is_array($decoded) ? $decoded : [$destinosRaw];
+            } elseif (is_array($destinosRaw)) {
+                $destinosList = $destinosRaw;
+            } else {
+                $destinosList = [];
+            }
+
+            $destinosTexto = ! empty($destinosList)
+                ? implode(' ➔ ', array_filter(array_map('trim', $destinosList)))
+                : 'Circuito Turístico Valle del Mantaro';
+
+            $caption = "🏞️ *TOUR #{$num}: {$nombre}*\n".
+                "📝 {$descripcion}\n\n".
+                "📍 *Ruta Turística:* {$destinosTexto}\n".
+                "🚘 *Unidad:* {$tipoVehiculo} | ⏱️ *Duración:* {$duracionFmt} hrs\n".
+                "💰 *Tarifa del Paquete:* S/ {$precio}\n\n".
+                "✅ Para reservar este tour responde: *TOUR {$num}*\n".
+                "🚕 *¿Prefieres un Taxi Urbano rápido ahora?* Escribe *1* o tu ruta (_De [Origen] a [Destino]_).";
+
+            // Construir URL pública HTTPS de la foto del paquete para WhatsApp Cloud API
+            $imagenRaw = trim((string) ($paquete->imagen_url ?? ''));
+            if (str_starts_with($imagenRaw, 'https://')) {
+                $urlImagen = $imagenRaw;
+            } else {
+                $urlImagen = "{$baseUrl}/turismo/imagen/{$idPaquete}.jpg";
+            }
+
+            $enviadoConFoto = $this->enviarImagenWhatsApp($destinatario, $urlImagen, $caption);
+            if (! $enviadoConFoto) {
+                $this->enviarMensajeWhatsApp($destinatario, $caption);
+            }
+        }
+
+        $this->enviarMensajeWhatsApp(
+            $destinatario,
+            "🚕 *¿NECESITAS UN TAXI URBANO AHORA MISMO?*\n".
+            "Nuestro *Servicio de Taxi KALUZ 24/7* es nuestra especialidad y tiene unidades listas cerca de ti en Huancayo, El Tambo y Chilca.\n\n".
+            "👉 Escribe *1* (o *A*) o envíanos directamente tu ruta:\n".
+            "_Ejemplo: De Plaza Constitución a UPLA_\n".
+            "👉 O si deseas agendar uno de los paquetes turísticos enviados arriba, escribe *TOUR 1*, *TOUR 2*, etc."
+        );
+    }
+
+    /**
+     * Permite reservar directamente un paquete turístico cuando el usuario responde "TOUR 1", "TOUR 2", etc.
+     */
+    protected function procesarReservaTurismoWhatsApp(string $destinatario, string $nombreContacto, string $textoTour): bool
+    {
+        if (! preg_match('/^tour\s*(\d+)$/i', $textoTour, $match)) {
+            return false;
+        }
+
+        $indice = max(1, (int) $match[1]) - 1;
+
+        try {
+            $paquetes = collect(
+                Supabase::table('paquetes_turisticos')
+                    ->where('activo', true)
+                    ->orderBy('id', 'desc')
+                    ->get()
+            )->values();
+        } catch (Throwable) {
+            return false;
+        }
+
+        $paquete = $paquetes->get($indice) ?? $paquetes->firstWhere('id', (int) $match[1]);
+        if (! $paquete) {
+            return false;
+        }
+
+        $nombreTour = (string) ($paquete->nombre ?? 'Tour KALUZ');
+        $precioTour = (float) ($paquete->precio ?? 80.0);
+        $precioFmt = number_format($precioTour, 2);
+
+        $destinosRaw = $paquete->destinos ?? [];
+        if (is_string($destinosRaw)) {
+            $decoded = json_decode($destinosRaw, true);
+            $destinosList = is_array($decoded) ? $decoded : [$destinosRaw];
+        } elseif (is_array($destinosRaw)) {
+            $destinosList = $destinosRaw;
+        } else {
+            $destinosList = [];
+        }
+        $primerDestino = ! empty($destinosList) ? implode(', ', array_slice($destinosList, 0, 3)) : $nombreTour;
+
+        $ahoraIso = Carbon::now('America/Lima')->toIso8601String();
+        $viajeId = null;
+
+        try {
+            $insertado = Supabase::table('viajes')->insert([
+                'cliente_telefono' => $destinatario,
+                'pasajero_nombre' => $nombreContacto,
+                'origen' => 'Recojo Turístico Huancayo',
+                'destino' => "TOUR: {$nombreTour} ({$primerDestino})",
+                'estado' => 'pendiente',
+                'tarifa' => $precioTour,
+                'distancia_km' => 15.0,
+                'created_at' => $ahoraIso,
+                'updated_at' => $ahoraIso,
+            ]);
+            $viajeObj = is_array($insertado) ? ($insertado[0] ?? null) : $insertado;
+            $viajeId = $viajeObj->id ?? null;
+        } catch (Throwable) {
+            // Ignorar si falla inserción opcional
+        }
+
+        $linkTracking = $viajeId ? url("/rastreo/{$viajeId}") : url('/turismo');
+
+        $this->enviarMensajeWhatsApp(
+            $destinatario,
+            "✅ *¡SOLICITUD DE TOUR REGISTRADA!*\n\n".
+            "🏞️ *Paquete:* {$nombreTour}\n".
+            "🗺️ * Circuito:* {$primerDestino}\n".
+            "💰 *Tarifa Turística:* S/ {$precioFmt}\n\n".
+            "📡 Hemos notificado a nuestras unidades de Turismo y Taxi VIP en la Torre de Control.\n".
+            "🔗 *Sigue tu solicitud en vivo aquí:*\n{$linkTracking}\n\n".
+            "🚕 _Recuerda que para traslados urbanos rápidos en cualquier momento, nuestro servicio principal de *Taxi KALUZ 24/7* siempre está a tu disposición escribiendo tu ruta._"
+        );
+
+        return true;
+    }
+
+    /**
+     * Envía una imagen con leyenda (caption) por WhatsApp usando el endpoint /messages de Meta.
+     */
+    protected function enviarImagenWhatsApp(string $destinatario, string $urlImagen, string $caption): bool
+    {
+        $phoneNumberId = (string) env('META_WA_PHONE_NUMBER_ID', '1387228187808934');
+        $token = (string) env('META_WA_BEARER_TOKEN', '');
+
+        if ($token === '' || $phoneNumberId === '' || $urlImagen === '') {
+            return false;
+        }
+
+        $response = Http::withoutVerifying()
+            ->withToken($token)
+            ->timeout(20)
+            ->post("https://graph.facebook.com/v20.0/{$phoneNumberId}/messages", [
+                'messaging_product' => 'whatsapp',
+                'recipient_type' => 'individual',
+                'to' => $destinatario,
+                'type' => 'image',
+                'image' => [
+                    'link' => $urlImagen,
+                    'caption' => $caption,
                 ],
             ]);
 

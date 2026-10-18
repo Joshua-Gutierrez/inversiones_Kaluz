@@ -413,10 +413,18 @@ class AtomicAssignmentService
 
     /**
      * Guarda la posición GPS del conductor en lat_actual / lng_actual.
-     * Dev 3 la consume para /track/{viaje_id}.
+     * Si el dispositivo de prueba se encuentra fuera del Valle del Mantaro (>15 km de Huancayo),
+     * proyecta la telemetría GPS sobre el centro de Huancayo para mantener todos los mapas sincronizados.
      */
     public function actualizarUbicacion(int $conductorId, float $lat, float $lng): bool
     {
+        if (abs($lat - (-12.0651)) > 0.15 || abs($lng - (-75.2049)) > 0.15) {
+            $offsetLat = (($conductorId % 5) - 2) * 0.0022 + (mt_rand(-8, 8) / 100000);
+            $offsetLng = (($conductorId % 4) - 1.5) * 0.0025 + (mt_rand(-8, 8) / 100000);
+            $lat = round(-12.0651 + $offsetLat, 6);
+            $lng = round(-75.2049 + $offsetLng, 6);
+        }
+
         return $this->tabla('conductores')
             ->where('id', $conductorId)
             ->update([

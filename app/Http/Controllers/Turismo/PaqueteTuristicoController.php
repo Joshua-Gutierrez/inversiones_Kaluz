@@ -202,11 +202,15 @@ class PaqueteTuristicoController extends Controller
             'paradas.min' => 'El itinerario debe tener al menos dos paradas.',
         ]);
 
-        $imagenUrl = $imagenActual;
+        $imagenUrl = $imagenActual ?: '/images/turismo-huancayo.jpg';
 
         if ($request->hasFile('imagen')) {
-            $ruta = $request->file('imagen')->store('turismo', 'public');
-            $imagenUrl = '/storage/'.$ruta;
+            $archivo = $request->file('imagen');
+            $contenido = @file_get_contents($archivo->getRealPath());
+            if ($contenido !== false) {
+                $mime = $archivo->getMimeType() ?: 'image/jpeg';
+                $imagenUrl = 'data:'.$mime.';base64,'.base64_encode($contenido);
+            }
         }
 
         return [

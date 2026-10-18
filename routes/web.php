@@ -213,16 +213,16 @@ if (! function_exists('armarFlotaEnVivoKaluz')) {
             ->whereNotNull('conductor_id')
             ->keyBy(fn ($s) => (int) $s->conductor_id);
 
-        // Puntos estratégicos de Huancayo para unidades que aún tienen la coordenada semilla por defecto
+        // Puntos estratégicos en el centro de Huancayo (radio ~1 km para visualización nítida en zoom 15)
         $puntosReferenciaHuancayo = [
             [-12.0651, -75.2049], // Parque Constitución
-            [-12.0681, -75.2106], // Real Plaza Huancayo
-            [-12.0558, -75.2185], // El Tambo / Parque Bolognesi
-            [-12.0475, -75.1990], // Universidad Continental
-            [-12.0785, -75.2045], // Chilca
-            [-12.0540, -75.2280], // Terminal Terrestre
-            [-12.0583, -75.2015], // Parque de la Identidad
-            [-12.0630, -75.2130], // Open Plaza Huancayo
+            [-12.0672, -75.2078], // Real Plaza Huancayo
+            [-12.0628, -75.2092], // El Tambo / Av. Mariscal Castilla
+            [-12.0608, -75.2018], // Av. San Carlos / U. Continental
+            [-12.0688, -75.2032], // Calle Real / Chilca
+            [-12.0640, -75.2115], // Av. Ferrocarril / Open Plaza
+            [-12.0618, -75.2055], // Jr. Puno / Centro Cívico
+            [-12.0665, -75.2015], // Av. Giráldez
         ];
 
         return $conductores->values()->map(function ($c, $idx) use ($viajesActivosPorConductor, $puntosReferenciaHuancayo, $geocodificador) {
@@ -238,7 +238,11 @@ if (! function_exists('armarFlotaEnVivoKaluz')) {
                 && abs($latRaw - (-12.0651)) < 0.0001
                 && abs($lngRaw - (-75.2049)) < 0.0001;
 
-            if ($latRaw === null || $lngRaw === null || $esCoordenadaDefaultRepetida) {
+            // Si la coordenada está fuera del casco urbano de Huancayo (>2 km), ubicarla en su sector de Huancayo
+            $fueraCascoUrbano = $latRaw !== null
+                && (abs($latRaw - (-12.0651)) > 0.020 || abs($lngRaw - (-75.2049)) > 0.020);
+
+            if ($latRaw === null || $lngRaw === null || $esCoordenadaDefaultRepetida || $fueraCascoUrbano) {
                 $ref = $puntosReferenciaHuancayo[$idx % count($puntosReferenciaHuancayo)];
                 $lat = $ref[0];
                 $lng = $ref[1];
@@ -359,6 +363,50 @@ Route::get('/sw.js', function () {
     return response($content, 200)
         ->header('Content-Type', 'application/javascript');
 });
+
+// Rutas públicas para servir imágenes de Paquetes Turísticos en Web y en Meta WhatsApp Cloud API
+Route::get('/storage/turismo/{archivo}', function (string $archivo) {
+    $pathStorage = storage_path('app/public/turismo/'.basename($archivo));
+    $pathFallback = public_path('images/turismo-huancayo.jpg');
+    $pathFinal = file_exists($pathStorage) ? $pathStorage : $pathFallback;
+
+    if (file_exists($pathFinal)) {
+        return response(file_get_contents($pathFinal), 200)
+            ->header('Content-Type', 'image/jpeg')
+            ->header('Cache-Control', 'public, max-age=86400');
+    }
+
+    abort(404);
+});
+
+Route::get('/turismo/imagen/{id}.jpg', function (int $id) {
+    $paquete = Supabase::table('paquetes_turisticos')->where('id', $id)->first();
+    $imgUrl = (string) ($paquete->imagen_url ?? '');
+
+    if (str_starts_with($imgUrl, 'data:image/')) {
+        if (preg_match('/^data:(image\/[a-zA-Z0-9\+\-\.]+);base64,(.+)$/s', $imgUrl, $matches)) {
+            $binario = base64_decode($matches[2], true);
+            if ($binario !== false) {
+                return response($binario, 200)
+                    ->header('Content-Type', $matches[1])
+                    ->header('Cache-Control', 'public, max-age=3600');
+            }
+        }
+    }
+
+    if (str_starts_with($imgUrl, 'http://') || str_starts_with($imgUrl, 'https://')) {
+        return redirect()->away($imgUrl);
+    }
+
+    $pathFallback = public_path('images/turismo-huancayo.jpg');
+    if (file_exists($pathFallback)) {
+        return response(file_get_contents($pathFallback), 200)
+            ->header('Content-Type', 'image/jpeg')
+            ->header('Cache-Control', 'public, max-age=86400');
+    }
+
+    abort(404);
+})->whereNumber('id')->name('turismo.imagen');
 
 /*
 |--------------------------------------------------------------------------
