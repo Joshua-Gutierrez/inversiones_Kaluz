@@ -39,8 +39,8 @@ if (! function_exists('enviarTextoMetaWhatsApp')) {
      */
     function enviarTextoMetaWhatsApp(string $destinatario, string $texto): bool
     {
-        $bearerToken = (string) env('META_WA_BEARER_TOKEN');
-        $phoneId = (string) env('META_WA_PHONE_NUMBER_ID');
+        $bearerToken = \App\Http\Controllers\WhatsAppController::obtenerTokenMeta();
+        $phoneId = (string) env('META_WA_PHONE_NUMBER_ID', '1387228187808934');
 
         if ($bearerToken === '' || $phoneId === '' || $destinatario === '') {
             return false;
@@ -60,6 +60,10 @@ if (! function_exists('enviarTextoMetaWhatsApp')) {
                 ],
             ]);
 
+        if (! $response->successful()) {
+            \Illuminate\Support\Facades\Log::error('Meta WA texto falló a '.$destinatario.': '.$response->body());
+        }
+
         return $response->successful();
     }
 }
@@ -76,8 +80,8 @@ if (! function_exists('enviarContraofertaInteractiva')) {
         int $tiempoLlegadaMin = 5,
         int $ofertaId = 0
     ): bool {
-        $bearerToken = (string) env('META_WA_BEARER_TOKEN');
-        $phoneId = (string) env('META_WA_PHONE_NUMBER_ID');
+        $bearerToken = \App\Http\Controllers\WhatsAppController::obtenerTokenMeta();
+        $phoneId = (string) env('META_WA_PHONE_NUMBER_ID', '1387228187808934');
         $montoFormateado = number_format((float) $monto, 2, '.', '');
 
         // Nota técnica Meta API: el title de un botón interactivo permite máximo 20 caracteres UTF-16
@@ -126,6 +130,8 @@ if (! function_exists('enviarContraofertaInteractiva')) {
         if ($response->successful()) {
             return true;
         }
+
+        \Illuminate\Support\Facades\Log::warning('Meta WA interactivo falló a '.$numeroPasajero.': '.$response->body().'. Reintentando en texto plano.');
 
         // Respaldo en texto plano si la sesión interactiva tuviese alguna restricción
         return enviarTextoMetaWhatsApp(

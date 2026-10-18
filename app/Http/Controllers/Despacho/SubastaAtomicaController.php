@@ -130,8 +130,11 @@ class SubastaAtomicaController extends Controller
                         );
                     }
                 }
-            } catch (\Throwable) {
-                // Continuar sin interrumpir respuesta JSON al radar
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Error enviando contraoferta interactiva por WhatsApp: '.$e->getMessage(), [
+                    'solicitud_id' => $solicitudId,
+                    'conductor_id' => $conductorId,
+                ]);
             }
         }
 
@@ -315,8 +318,10 @@ class SubastaAtomicaController extends Controller
                     'El conductor ya tiene tu ubicación y está en camino. ¡Gracias por usar KALUZ!'
                 );
             }
-        } catch (\Throwable) {
-            // Continuar sin interrumpir la asignación
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Error notificarViajeConfirmadoWhatsApp: '.$e->getMessage(), [
+                'viaje_id' => $viajeObj->id ?? null,
+            ]);
         }
     }
 

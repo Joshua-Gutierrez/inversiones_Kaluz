@@ -874,6 +874,10 @@ class WhatsAppController extends Controller
                 ],
             ]);
 
+        if (! $response->successful()) {
+            \Illuminate\Support\Facades\Log::error('enviarMensajeWhatsApp falló a '.$destinatario.': '.$response->body());
+        }
+
         return $response->successful();
     }
 
@@ -1086,6 +1090,10 @@ class WhatsAppController extends Controller
                     'caption' => $caption,
                 ],
             ]);
+
+        if (! $response->successful()) {
+            \Illuminate\Support\Facades\Log::error('enviarImagenWhatsApp falló a '.$destinatario.': '.$response->body());
+        }
 
         return $response->successful();
     }
