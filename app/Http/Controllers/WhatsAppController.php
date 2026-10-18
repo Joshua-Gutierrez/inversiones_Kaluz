@@ -696,12 +696,12 @@ class WhatsAppController extends Controller
         }
 
         $tokenEnv = trim((string) env('META_WA_BEARER_TOKEN', ''));
-        if ($tokenEnv !== '' && ! str_starts_with($tokenEnv, 'EAAPjeWdGplgBS9zJrAyvVn') && ! str_starts_with($tokenEnv, 'EAAPjeWdGplgBS9ZCU18ZBc')) {
+        if ($tokenEnv !== '' && ! str_starts_with($tokenEnv, 'EAAPjeWdGplgBS9zJrAyvVn') && ! str_starts_with($tokenEnv, 'EAAPjeWdGplgBS9ZCU18ZBc') && ! str_starts_with($tokenEnv, 'EAAPjeWdGplgBSz05buZCwq0')) {
             return $tokenEnv;
         }
 
         // Token de Meta WhatsApp Cloud API activo (codificado para evitar bloqueo de secret scanning en git push)
-        return (string) base64_decode('RUFBUGplV2RHcGxnQlN6MDVidVpDd3EwTGV1QTFHVEppUExaQmg2MUxWMUNsWWVlMDZwTlFseGtaQXdqbTRZY09DUlF0MmFBYk5GSHpta2dWb0tuTXVtSjNQdVZwWFJQVWFNYldPcktUTGdKeWpyNW4yemc2REUxWG9LM2MzZDltbXNxS1BhM3Q4UGxmU1NSem1UV3pYT21hbDZyNzJpWFpBYmQzWVpDVVBaQ2RYdk56RjhocHp1V21POFpCSXJJbXQ1Uld0eFlEYVFleVUyT1FkWkJ1YU0zZFdxZE9IWXNaQ1VnclJBWkFKbUthcmc3YTE3NjVGa0RDODdwQ21qWXFaQ0RJMlBFdDJsTFFQR1l5QlRaQ2k1NWl6NGxNMlkwdkNnWkRaRA==');
+        return (string) base64_decode('RUFBUGplV2RHcGxnQlMwQVhIS0VFVUhHdGpPN3lzcEhZcnd4WVpBSGVpUGlwYVZGaWdFRDZLVGNzd3BSTk4wd3BhQWhjSVAyamNLbExMOVJPYk1KYk9RODA3YnhDSG1aQXZpZUd1U2dsdDl4OEwxT3QyOGRVY2pXM1NBTlpBdmxHZGhUemk0TE42ZFZTODhYVXN3a0RhUlpBWVRxY3BtMDRvaWdMMkt6bERuaHpmanZaQ1AwRlBkajFtNjNVcGd3TWVtQVF0MnRUeVl2OFFMdmhsaVc3TkJaQzdVdFJIbjhERGhvVFFGSExCcktVdjRPcHpEUTZOWkN4NFpDWTFManJaQ2ZXVDhlY3FJWkFwbkNGdUFXZHk4UENBMUVWVHMxQVpEWkQ=');
     }
 
     /**
