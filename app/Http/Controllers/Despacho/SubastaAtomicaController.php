@@ -273,6 +273,23 @@ class SubastaAtomicaController extends Controller
     private function normalizarTelefonoWa(string $telefono): string
     {
         $soloDigitos = preg_replace('/\D+/', '', $telefono);
+
+        // Si el viaje tiene el teléfono demo (999888777), buscar el último número real que escribió al bot
+        if (str_ends_with($soloDigitos, '999888777')) {
+            $recientes = Supabase::table('solicitudes_viaje')
+                ->orderByDesc('id')
+                ->limit(15)
+                ->get();
+
+            foreach ($recientes as $r) {
+                $digitosReal = preg_replace('/\D+/', '', (string) ($r->cliente_telefono ?? ''));
+                if ($digitosReal !== '' && ! str_ends_with($digitosReal, '999888777')) {
+                    $soloDigitos = $digitosReal;
+                    break;
+                }
+            }
+        }
+
         if (strlen($soloDigitos) === 9) {
             return '51'.$soloDigitos;
         }

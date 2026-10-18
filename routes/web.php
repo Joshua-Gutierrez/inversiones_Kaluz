@@ -80,12 +80,14 @@ if (! function_exists('enviarContraofertaInteractiva')) {
         $phoneId = (string) env('META_WA_PHONE_NUMBER_ID');
         $montoFormateado = number_format((float) $monto, 2, '.', '');
 
-        // Nota técnica Meta API: el title de un botón interactivo permite máximo 20 caracteres
-        $tituloAceptar = mb_substr("✅ Aceptar S/ {$montoFormateado}", 0, 20);
+        // Nota técnica Meta API: el title de un botón interactivo permite máximo 20 caracteres UTF-16
+        $tituloAceptar = mb_substr("✅ Aceptar S/{$montoFormateado}", 0, 20);
         $tituloRechazar = mb_substr('❌ Esperar otra', 0, 20);
 
         $idAceptar = $ofertaId > 0 ? "btn_aceptar_oferta_{$ofertaId}" : 'btn_aceptar_oferta';
         $idRechazar = $ofertaId > 0 ? "btn_rechazar_oferta_{$ofertaId}" : 'btn_rechazar_oferta';
+
+        $textoCuerpo = "🚕 El conductor {$nombreChofer} (Auto: {$placaChofer}) ofrece llevarte por S/ {$montoFormateado} (llega en ~{$tiempoLlegadaMin} min).\n\n¿Qué decides?";
 
         $response = Http::withoutVerifying()
             ->withToken($bearerToken)
@@ -98,7 +100,7 @@ if (! function_exists('enviarContraofertaInteractiva')) {
                 'interactive' => [
                     'type' => 'button',
                     'body' => [
-                        'text' => "🚕 El conductor {$nombreChofer} (Auto: {$placaChofer}) ofrece llevarte por S/ {$montoFormateado} (llega en ~{$tiempoLlegadaMin} min).\n\n¿Qué decides?",
+                        'text' => $textoCuerpo,
                     ],
                     'action' => [
                         'buttons' => [
@@ -121,7 +123,15 @@ if (! function_exists('enviarContraofertaInteractiva')) {
                 ],
             ]);
 
-        return $response->successful();
+        if ($response->successful()) {
+            return true;
+        }
+
+        // Respaldo en texto plano si la sesión interactiva tuviese alguna restricción
+        return enviarTextoMetaWhatsApp(
+            $numeroPasajero,
+            $textoCuerpo."\n\nResponde *ACEPTAR* para confirmar o *RECHAZAR* para esperar otra oferta."
+        );
     }
 }
 

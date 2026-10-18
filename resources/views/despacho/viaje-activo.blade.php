@@ -20,7 +20,7 @@
 
 @section('content')
 <div
-    x-data="viajeActivo('{{ route('despacho.api.viaje.estado', ['solicitud' => $viajeActivo->id, 'conductor_id' => $conductor->id]) }}', '{{ route('despacho.api.ubicacion', ['conductor_id' => $conductor->id]) }}', {{ $conductor->lat_actual ?? 'null' }}, {{ $conductor->lng_actual ?? 'null' }}, {{ (int) $conductor->id }})"
+    x-data="viajeActivo('{{ route('despacho.api.viaje.estado', ['id' => $viajeActivo->id, 'conductor_id' => $conductor->id]) }}', '{{ route('despacho.api.ubicacion', ['conductor_id' => $conductor->id]) }}', {{ $conductor->lat_actual ?? 'null' }}, {{ $conductor->lng_actual ?? 'null' }}, {{ (int) $conductor->id }})"
     x-init="iniciarGps()"
     class="space-y-4"
 >

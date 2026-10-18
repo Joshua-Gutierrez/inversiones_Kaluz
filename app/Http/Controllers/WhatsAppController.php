@@ -342,6 +342,51 @@ class WhatsAppController extends Controller
                     return response('EVENT_RECEIVED', 200);
                 }
 
+                // Soporte adicional si el cliente escribe "Aceptar" o "Acepto" en texto
+                if (preg_match('/^(acepto|aceptar|si\s+acepto|s[ií]\s+acepto|confirmar)$/iu', $cuerpoTexto)) {
+                    $ultimaSolicitud = Supabase::table('solicitudes_viaje')
+                        ->where('cliente_telefono', $remitente)
+                        ->orderByDesc('id')
+                        ->first();
+
+                    if ($ultimaSolicitud) {
+                        $ultimaOferta = Supabase::table('ofertas_conductores')
+                            ->where('solicitud_id', $ultimaSolicitud->id)
+                            ->orderByDesc('id')
+                            ->first();
+
+                        $conductorIdAsignado = $ultimaOferta->conductor_id ?? $ultimaSolicitud->conductor_id ?? 15;
+                        $montoAcordado = $ultimaOferta->monto_contraoferta ?? $ultimaSolicitud->precio_final ?? $ultimaSolicitud->oferta_cliente ?? 7.00;
+                        $tarifaAcordada = number_format((float) $montoAcordado, 2, '.', '');
+                        $chofer = Supabase::table('conductores')->where('id', $conductorIdAsignado)->first();
+
+                        $nombreConductor = $chofer->nombre ?? 'Carlos Mendoza';
+                        $vehiculoConductor = $chofer->modelo_vehiculo ?? 'Toyota Yaris';
+                        $placaConductor = $chofer->placa ?? 'W3X-451';
+
+                        Supabase::table('solicitudes_viaje')->where('id', $ultimaSolicitud->id)->update([
+                            'estado' => 'asignado',
+                            'conductor_id' => $conductorIdAsignado,
+                            'precio_final' => (float) $montoAcordado,
+                            'updated_at' => now()->toIso8601String(),
+                        ]);
+
+                        $urlRastreo = url('/rastreo/'.$ultimaSolicitud->id);
+
+                        $this->enviarMensajeWhatsApp(
+                            $remitente,
+                            "🎉 ¡Viaje confirmado!\n\n".
+                            "🚗 Conductor: {$nombreConductor}\n".
+                            "🚙 Vehículo: {$vehiculoConductor} ({$placaConductor})\n".
+                            "💰 Tarifa acordada: S/ {$tarifaAcordada}\n\n".
+                            "📍 Sigue a tu taxi en tiempo real aquí:\n{$urlRastreo}\n\n".
+                            'El conductor ya tiene tu ubicación y está en camino. ¡Gracias por usar KALUZ!'
+                        );
+
+                        return response('EVENT_RECEIVED', 200);
+                    }
+                }
+
                 // FLUJO 1 - Paso 2B: El cliente responde con la tarifa que está dispuesto a pagar (ej. "7", "S/ 7.50", "8 soles")
                 if (preg_match($patronMontoOferta, $cuerpoTexto, $mTarifa)) {
                     $montoOferta = max(3.0, (float) str_replace(',', '.', $mTarifa[1]));
