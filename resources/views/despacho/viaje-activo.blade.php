@@ -20,9 +20,8 @@
 
 @section('content')
 <div
-    x-data="viajeActivo('{{ route('despacho.api.viaje.estado', $viajeActivo->id) }}', '{{ route('despacho.api.ubicacion') }}', {{ $conductor->lat_actual ?? 'null' }}, {{ $conductor->lng_actual ?? 'null' }})"
+    x-data="viajeActivo('{{ route('despacho.api.viaje.estado', ['solicitud' => $viajeActivo->id, 'conductor_id' => $conductor->id]) }}', '{{ route('despacho.api.ubicacion', ['conductor_id' => $conductor->id]) }}', {{ $conductor->lat_actual ?? 'null' }}, {{ $conductor->lng_actual ?? 'null' }}, {{ (int) $conductor->id }})"
     x-init="iniciarGps()"
-    x-cloak
     class="space-y-4"
 >
     {{-- Aviso de resultado de acciones --}}
@@ -327,7 +326,7 @@
         setTimeout(() => mapa.invalidateSize(), 200);
     }
 
-    function viajeActivo(urlEstado, urlUbicacion, latDefault, lngDefault) {
+    function viajeActivo(urlEstado, urlUbicacion, latDefault, lngDefault, conductorId) {
         return {
             estado: @json($viajeActivo->estado),
             aviso: '',
@@ -394,7 +393,7 @@
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                         },
                         credentials: 'same-origin',
-                        body: JSON.stringify({ lat: this.lat, lng: this.lng }),
+                        body: JSON.stringify({ lat: this.lat, lng: this.lng, conductor_id: conductorId }),
                     });
                 } catch (e) { /* reintenta en el próximo tick */ }
             },
@@ -417,16 +416,16 @@
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                         },
                         credentials: 'same-origin',
-                        body: JSON.stringify({ estado: nuevo }),
+                        body: JSON.stringify({ estado: nuevo, conductor_id: conductorId }),
                     });
                     const json = await r.json();
                     if (json.ok) {
                         this.estado = nuevo;
                         this.empujarMapa();
-                        this.mostrar('¡Listo! Estado actualizado.', true);
+                        this.mostrar('¡Listo! Estado actualizado y notificado al pasajero.', true);
                         if (nuevo === 'completado' || nuevo === 'cancelado') {
                             clearInterval(this.gpsTimer);
-                            setTimeout(() => window.location = '/conductor/radar', 1200);
+                            setTimeout(() => window.location = '/conductor/radar?conductor_id=' + conductorId, 1200);
                         }
                     } else {
                         this.mostrar(json.mensaje || 'No se pudo cambiar el estado.', false);

@@ -94,15 +94,21 @@
                     x-transition
                     class="bg-[#111E3B] rounded-2xl border border-white/10 p-4 space-y-3 shadow-lg"
                 >
-                    {{-- Badge superior Solicitud de WhatsApp --}}
+                    {{-- Badge superior Solicitud de WhatsApp + Distancia Haversine --}}
                     <div class="flex items-center justify-between gap-2">
-                        <span class="inline-flex items-center gap-1.5 bg-slate-200/95 text-[#0A1329] text-xs font-bold px-3 py-1 rounded-full shadow-xs">
-                            <i class="ri-whatsapp-line text-sm text-[#0A1329]" x-show="s.tipo_servicio !== 'turismo'"></i>
-                            <i class="ri-bus-2-line text-sm text-[#0A1329]" x-show="s.tipo_servicio === 'turismo'"></i>
-                            <span x-text="s.tipo_servicio === 'turismo' ? 'Tour Turístico KALUZ' : 'Solicitud de WhatsApp'"></span>
-                        </span>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="inline-flex items-center gap-1.5 bg-slate-200/95 text-[#0A1329] text-xs font-bold px-3 py-1 rounded-full shadow-xs">
+                                <i class="ri-whatsapp-line text-sm text-[#0A1329]" x-show="s.tipo_servicio !== 'turismo'"></i>
+                                <i class="ri-bus-2-line text-sm text-[#0A1329]" x-show="s.tipo_servicio === 'turismo'"></i>
+                                <span x-text="s.tipo_servicio === 'turismo' ? 'Tour Turístico KALUZ' : 'Solicitud de WhatsApp'"></span>
+                            </span>
+                            <span x-show="s.distancia_km" class="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold px-2.5 py-0.5 rounded-full">
+                                <i class="ri-pin-distance-line text-xs"></i>
+                                <span>A <span x-text="Number(s.distancia_km).toFixed(1)"></span> km</span>
+                            </span>
+                        </div>
 
-                        <span class="text-[11px] text-slate-400 font-medium flex items-center gap-1">
+                        <span class="text-[11px] text-slate-400 font-medium flex items-center gap-1 shrink-0">
                             <i class="ri-time-line text-xs"></i>
                             <span x-text="minutos(s.hace_segundos)"></span>
                         </span>
@@ -127,13 +133,29 @@
                         </div>
                     </div>
 
-                    {{-- Precio grande en blanco --}}
-                    <div class="pt-0.5 flex items-baseline justify-between">
-                        <p class="font-headline font-black text-3xl text-white tracking-tight">
-                            S/ <span x-text="s.oferta_cliente.toFixed(2)"></span>
-                        </p>
-                        <span class="text-xs text-slate-400" x-text="s.cliente_nombre || 'Pasajero WhatsApp'"></span>
+                    {{-- Precio grande en blanco + Datos del pasajero --}}
+                    <div class="pt-0.5 flex items-end justify-between gap-2">
+                        <div>
+                            <span class="text-[10px] uppercase tracking-wider text-emerald-400 font-bold block">Oferta del pasajero</span>
+                            <p class="font-headline font-black text-3xl text-white tracking-tight">
+                                S/ <span x-text="Number(s.oferta_cliente).toFixed(2)"></span>
+                            </p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs font-semibold text-slate-200 block" x-text="s.cliente_nombre || 'Pasajero WhatsApp'"></span>
+                            <span class="text-[11px] text-slate-400 block" x-text="s.cliente_telefono || ''"></span>
+                        </div>
                     </div>
+
+                    {{-- Aviso si este conductor ya envió una contraoferta a esta solicitud --}}
+                    <template x-if="s.mi_oferta">
+                        <div class="bg-amber-500/15 border border-amber-500/30 rounded-xl px-3 py-2 text-xs text-amber-200 flex items-center justify-between gap-2">
+                            <span class="flex items-center gap-1.5 font-medium">
+                                <i class="ri-Hourglass-fill text-amber-400 animate-pulse"></i>
+                                <span>Tu oferta: <strong class="text-white">S/ <span x-text="Number(s.mi_oferta).toFixed(2)"></span></strong> (esperando respuesta en WhatsApp)</span>
+                            </span>
+                        </div>
+                    </template>
 
                     {{-- Botones de acción: Contraoferta (izquierda) y Aceptar Viaje (derecha) --}}
                     <div class="grid grid-cols-2 gap-2.5 pt-1">
@@ -142,7 +164,8 @@
                             @click="abrirContraoferta(s)"
                             class="bg-[#0B152B] hover:bg-[#16274C] border border-slate-400/50 text-white font-semibold rounded-xl py-2.5 px-3 text-xs transition flex items-center justify-center gap-1"
                         >
-                            <span>Ofrecer S/ <span x-text="(s.oferta_cliente + 1).toFixed(2)"></span> (+1.00)</span>
+                            <i class="ri-scales-3-line text-sm text-amber-400"></i>
+                            <span x-text="s.mi_oferta ? 'Cambiar oferta' : 'Contraofertar S/ ' + (Number(s.oferta_cliente) + 1).toFixed(2)"></span>
                         </button>
 
                         <button
@@ -152,7 +175,7 @@
                             class="bg-[#D91B23] hover:bg-[#B9151C] disabled:opacity-60 text-white font-bold rounded-xl shadow-md py-2.5 px-3 text-xs transition flex items-center justify-center gap-1.5"
                         >
                             <i class="ri-taxi-fill text-base" x-show="enviando !== s.id"></i>
-                            <span x-show="enviando !== s.id">Aceptar Viaje</span>
+                            <span x-show="enviando !== s.id">Aceptar S/ <span x-text="Number(s.oferta_cliente).toFixed(2)"></span></span>
                             <span x-show="enviando === s.id">Asignando...</span>
                         </button>
                     </div>
@@ -168,7 +191,7 @@
                 <p class="font-headline font-bold text-sm text-white">Radar activo esperando pasajeros</p>
                 <p class="text-xs text-slate-400">Cuando un pasajero pida taxi por WhatsApp en Huancayo aparecerá aquí al instante.</p>
                 <div class="pt-2">
-                    <a href="{{ route('despacho.demo.crear-solicitud') }}"
+                    <a href="{{ route('despacho.demo.crear-solicitud', ['conductor_id' => $conductor->id]) }}"
                        class="inline-flex items-center gap-1.5 bg-[#E31B23] hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow">
                         <i class="ri-whatsapp-line text-sm"></i>
                         <span>Simular pedido de WhatsApp</span>
@@ -208,7 +231,7 @@
                 </p>
             </div>
 
-            <a href="{{ route('despacho.viaje') }}"
+            <a href="{{ route('despacho.viaje', ['conductor_id' => $conductor->id]) }}"
                 class="flex items-center justify-center gap-2 bg-[#E31B23] hover:bg-red-700 text-white font-bold rounded-xl shadow-md py-3 text-sm transition">
                 <i class="ri-road-map-line text-base"></i>
                 <span>Abrir Mapa GPS del Viaje</span>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Despacho\GeocodingService;
 use App\Services\Supabase\Supabase;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -46,7 +47,7 @@ class WhatsAppController extends Controller
 
     /**
      * POST /api/webhook
-     * Procesa Flujo 1 (Pasajero: Pedir Taxi y Negociar) y Flujo 2 (Chofer: Candado Financiero OCR).
+     * Procesa Flujo 1 (Pasajero: Pedir Taxi y Negociar estilo inDrive) y Flujo 2 (Chofer: Candado Financiero OCR).
      * Siempre devuelve HTTP 200 para evitar que Meta desactive el webhook en Vercel.
      */
     public function handle(Request $request): Response|JsonResponse
@@ -160,39 +161,53 @@ class WhatsAppController extends Controller
 
                 $solicitudPendiente = Supabase::table('solicitudes_viaje')
                     ->where('cliente_telefono', $remitente)
-                    ->where('estado', 'pendiente')
+                    ->whereIn('estado', ['pendiente', 'en_subasta'])
                     ->orderByDesc('id')
                     ->first();
 
                 if ($solicitudPendiente) {
                     Supabase::table('solicitudes_viaje')->where('id', $solicitudPendiente->id)->update([
-                        'origen_lat' => $latPasajero ?: -12.0681,
-                        'origen_lng' => $lonPasajero ?: -75.2069,
+                        'origen_lat' => $latPasajero ?: -12.0651,
+                        'origen_lng' => $lonPasajero ?: -75.2049,
                         'updated_at' => now()->toIso8601String(),
                     ]);
+                    $solicitudId = (int) $solicitudPendiente->id;
+                    $origenTxt = (string) $solicitudPendiente->origen_texto;
+                    $destinoTxt = (string) $solicitudPendiente->destino_texto;
+                    $ofertaFmt = number_format((float) $solicitudPendiente->oferta_cliente, 2, '.', '');
                 } else {
-                    Supabase::table('solicitudes_viaje')->insert([
+                    $solicitudId = (int) Supabase::table('solicitudes_viaje')->insertGetId([
                         'cliente_nombre' => $nombreContacto,
                         'cliente_telefono' => $remitente,
                         'origen_texto' => $direccionEnviada,
-                        'origen_lat' => $latPasajero ?: -12.0681,
-                        'origen_lng' => $lonPasajero ?: -75.2069,
-                        'destino_texto' => 'Parque de la Identidad',
-                        'destino_lat' => -12.0558,
-                        'destino_lng' => -75.2185,
+                        'origen_lat' => $latPasajero ?: -12.0651,
+                        'origen_lng' => $lonPasajero ?: -75.2049,
+                        'destino_texto' => 'Real Plaza Huancayo',
+                        'destino_lat' => -12.0675,
+                        'destino_lng' => -75.2049,
                         'tipo_servicio' => 'urbano',
+                        'precio_sugerido' => 6.00,
                         'oferta_cliente' => 6.00,
                         'estado' => 'pendiente',
                         'created_at' => now()->toIso8601String(),
                         'updated_at' => now()->toIso8601String(),
                     ]);
+                    $origenTxt = $direccionEnviada;
+                    $destinoTxt = 'Real Plaza Huancayo';
+                    $ofertaFmt = '6.00';
                 }
+
+                $urlRastreo = url('/rastreo/'.($solicitudId ?: 1));
 
                 // FLUJO 1 - Paso 3: Confirmación de Búsqueda
                 $this->enviarMensajeWhatsApp(
                     $remitente,
-                    "🔎 Ubicación recibida. Estamos alertando a los taxis a tu alrededor con tu ruta.\n\n".
-                    'En unos segundos te enviaré las ofertas de los conductores. ¡Atento!'
+                    "🔎 Ubicación recibida. Estamos alertando a los taxis a tu alrededor con tu ruta:\n".
+                    "📍 *Origen:* {$origenTxt}\n".
+                    "🏁 *Destino:* {$destinoTxt}\n".
+                    "💵 *Tu oferta:* S/ {$ofertaFmt}\n\n".
+                    "En unos segundos te enviaré las ofertas de los conductores. ¡Atento!\n".
+                    "🗺️ Radar en vivo: {$urlRastreo}"
                 );
 
                 return response('EVENT_RECEIVED', 200);
@@ -206,19 +221,32 @@ class WhatsAppController extends Controller
                     ->orderByDesc('id')
                     ->first();
 
-                if ($botonId === 'btn_aceptar_oferta') {
-                    $nombreConductor = 'Carlos Mendoza';
-                    $vehiculoConductor = 'Toyota Yaris';
-                    $placaConductor = 'W3X-451';
-                    $tarifaAcordada = '7.00';
+                if (str_starts_with($botonId, 'btn_aceptar_oferta')) {
+                    $ofertaIdEspecifica = (int) preg_replace('/\D+/', '', $botonId);
 
-                    if ($ultimaSolicitud) {
-                        $ultimaOferta = Supabase::table('ofertas_conductor')
+                    $nombreConductor = 'Juan Carlos Quispe';
+                    $vehiculoConductor = 'Toyota HiAce Combi 2022';
+                    $placaConductor = 'W2X-780';
+                    $tarifaAcordada = '7.00';
+                    $solicitudIdParaRastreo = $ultimaSolicitud->id ?? 1;
+
+                    $ultimaOferta = null;
+                    if ($ofertaIdEspecifica > 0) {
+                        $ultimaOferta = Supabase::table('ofertas_conductores')
+                            ->where('id', $ofertaIdEspecifica)
+                            ->first();
+                    }
+                    if (! $ultimaOferta && $ultimaSolicitud) {
+                        $ultimaOferta = Supabase::table('ofertas_conductores')
                             ->where('solicitud_id', $ultimaSolicitud->id)
                             ->orderByDesc('id')
                             ->first();
+                    }
 
-                        $conductorIdAsignado = $ultimaOferta->conductor_id ?? $ultimaSolicitud->conductor_id;
+                    if ($ultimaSolicitud || $ultimaOferta) {
+                        $solicitudTargetId = (int) ($ultimaOferta->solicitud_id ?? $ultimaSolicitud->id);
+                        $solicitudIdParaRastreo = $solicitudTargetId;
+                        $conductorIdAsignado = $ultimaOferta->conductor_id ?? $ultimaSolicitud->conductor_id ?? null;
                         $montoAcordado = $ultimaOferta->monto_contraoferta ?? $ultimaSolicitud->precio_final ?? $ultimaSolicitud->oferta_cliente ?? 7.00;
                         $tarifaAcordada = number_format((float) $montoAcordado, 2, '.', '');
 
@@ -231,13 +259,28 @@ class WhatsAppController extends Controller
                             }
                         }
 
-                        Supabase::table('solicitudes_viaje')->where('id', $ultimaSolicitud->id)->update([
-                            'estado' => 'aceptado',
+                        // Estado 'asignado' para que la PWA del conductor detecte viaje_activo en vivo y abra el mapa GPS
+                        Supabase::table('solicitudes_viaje')->where('id', $solicitudTargetId)->update([
+                            'estado' => 'asignado',
                             'conductor_id' => $conductorIdAsignado,
                             'precio_final' => (float) $montoAcordado,
                             'updated_at' => now()->toIso8601String(),
                         ]);
+
+                        if ($ultimaOferta) {
+                            Supabase::table('ofertas_conductores')
+                                ->where('id', $ultimaOferta->id)
+                                ->update(['estado' => 'aceptada']);
+
+                            Supabase::table('ofertas_conductores')
+                                ->where('solicitud_id', $solicitudTargetId)
+                                ->where('id', '!=', $ultimaOferta->id)
+                                ->where('estado', 'pendiente')
+                                ->update(['estado' => 'rechazada']);
+                        }
                     }
+
+                    $urlRastreo = url('/rastreo/'.$solicitudIdParaRastreo);
 
                     // FLUJO 1 - Paso 5A: Cliente acepta el viaje
                     $this->enviarMensajeWhatsApp(
@@ -246,13 +289,22 @@ class WhatsAppController extends Controller
                         "🚗 Conductor: {$nombreConductor}\n".
                         "🚙 Vehículo: {$vehiculoConductor} ({$placaConductor})\n".
                         "💰 Tarifa acordada: S/ {$tarifaAcordada}\n\n".
+                        "📍 Sigue a tu taxi en tiempo real aquí:\n{$urlRastreo}\n\n".
                         'El conductor ya tiene tu ubicación y está en camino. ¡Gracias por usar KALUZ!'
                     );
 
                     return response('EVENT_RECEIVED', 200);
                 }
 
-                if ($botonId === 'btn_rechazar_oferta') {
+                if (str_starts_with($botonId, 'btn_rechazar_oferta')) {
+                    $ofertaIdEspecifica = (int) preg_replace('/\D+/', '', $botonId);
+
+                    if ($ofertaIdEspecifica > 0) {
+                        Supabase::table('ofertas_conductores')
+                            ->where('id', $ofertaIdEspecifica)
+                            ->update(['estado' => 'rechazada']);
+                    }
+
                     if ($ultimaSolicitud) {
                         Supabase::table('solicitudes_viaje')->where('id', $ultimaSolicitud->id)->update([
                             'estado' => 'pendiente',
@@ -272,13 +324,16 @@ class WhatsAppController extends Controller
 
             if ($tipo === 'text') {
                 $cuerpoTexto = trim((string) data_get($message, 'text.body', ''));
-                $nombreContacto = (string) data_get($payload, 'entry.0.changes.0.value.contacts.0.profile.name', 'Pasajero');
+                $nombreContacto = (string) data_get($payload, 'entry.0.changes.0.value.contacts.0.profile.name', 'Pasajero WhatsApp');
 
-                $patronViaje = '/(?:desde\s*:?\s*|de\s+|estoy\s+en\s+)(.+?)\s+(?:a\s*:?\s*|hacia\s+|para\s+|destino\s*:?\s*|voy\s+a\s+|voy\s+para\s+)([^,\.\n]+?)(?:\s+(?:por|oferta\s*:?|y\s+ofrezco|ofrezco|s\/\.?)\s*(?:s\/\.?\s*)?(\d+(?:[\.,]\d+)?))?$/is';
+                $patronViajeConPrefijo = '/^(?:desde\s*:?\s*|de\s+|estoy\s+en\s+)(.+?)\s+(?:a\s*:?\s*|hacia\s+|hasta\s+|para\s+|destino\s*:?\s*|voy\s+a\s+|voy\s+para\s+)([^,\.\n]+?)(?:\s+(?:por|oferta\s*:?|y\s+ofrezco|ofrezco|s\/\.?)\s*(?:s\/\.?\s*)?(\d+(?:[\.,]\d+)?)\s*(?:soles|sol)?)?$/isu';
+                $patronViajeDirecto = '/^([a-záéíóúñ0-9\s\.]{3,45}?)\s+(?:a|hacia|hasta)\s+([a-záéíóúñ0-9\s\.]{3,45}?)(?:\s+(?:por|oferta\s*:?|ofrezco|s\/\.?)\s*(?:s\/\.?\s*)?(\d+(?:[\.,]\d+)?)\s*(?:soles|sol)?)?$/isu';
+                $patronMontoOferta = '/^(?:s\/\.?\s*|por\s+|oferta\s*:?\s*|ofrezco\s+|pago\s+|doy\s+|tarifa\s*:?\s*)?(\d{1,3}(?:[\.,]\d{1,2})?)\s*(?:soles|sol|s\/\.?|nuevos\s+soles|lucas)?$/iu';
                 $parecePagoChofer = (bool) preg_match('/\b(pagu[eé]|yape|plin|comprobante|voucher|cuota|bloqueado|desbloquea)\b/i', $cuerpoTexto);
+                $esSaludoSimple = (bool) preg_match('/^(hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|buenas\s+noches|taxi|inicio|empezar|menu|men[uú]|ayuda)\b/iu', $cuerpoTexto);
 
                 // FLUJO 2 - Paso 2: Si el chofer envía texto en lugar de foto ("ya pagué")
-                if (($esChoferMoroso && ! preg_match($patronViaje, $cuerpoTexto)) || $parecePagoChofer) {
+                if (($esChoferMoroso && ! preg_match($patronViajeConPrefijo, $cuerpoTexto)) || $parecePagoChofer) {
                     $this->enviarMensajeWhatsApp(
                         $remitente,
                         '🤖 El sistema no detectó ninguna imagen. Por favor, adjunta la foto de la captura de Yape o Plin para poder validar tu pago.'
@@ -287,39 +342,112 @@ class WhatsAppController extends Controller
                     return response('EVENT_RECEIVED', 200);
                 }
 
-                // FLUJO 1 - Paso 2: El cliente responde con su ruta (ej. "De Real Plaza a Parque de la Identidad")
-                if (preg_match($patronViaje, $cuerpoTexto, $m)) {
-                    $origen = trim($m[1], " ,.:\n\r");
-                    $destino = trim($m[2], " ,.:\n\r");
-                    $oferta = 6.00;
+                // FLUJO 1 - Paso 2B: El cliente responde con la tarifa que está dispuesto a pagar (ej. "7", "S/ 7.50", "8 soles")
+                if (preg_match($patronMontoOferta, $cuerpoTexto, $mTarifa)) {
+                    $montoOferta = max(3.0, (float) str_replace(',', '.', $mTarifa[1]));
+                    $montoFmt = number_format($montoOferta, 2, '.', '');
 
-                    if (! empty($m[3])) {
-                        $oferta = (float) str_replace(',', '.', $m[3]);
+                    $solicitudActiva = Supabase::table('solicitudes_viaje')
+                        ->where('cliente_telefono', $remitente)
+                        ->whereIn('estado', ['pendiente', 'en_subasta'])
+                        ->orderByDesc('id')
+                        ->first();
+
+                    if ($solicitudActiva) {
+                        Supabase::table('solicitudes_viaje')
+                            ->where('id', $solicitudActiva->id)
+                            ->update([
+                                'oferta_cliente' => $montoOferta,
+                                'estado' => 'pendiente',
+                                'updated_at' => now()->toIso8601String(),
+                            ]);
+
+                        $this->enviarMensajeWhatsApp(
+                            $remitente,
+                            "¡Perfecto! 📍 Tu oferta de *S/ {$montoFmt}* ha sido registrada para tu ruta (*{$solicitudActiva->origen_texto}* ➔ *{$solicitudActiva->destino_texto}*).\n\n".
+                            'Toca el ícono del clip (📎) o el "+" y envíame tu *Ubicación actual*. Así alertaré a los conductores que estén más cerca de ti.'
+                        );
+
+                        return response('EVENT_RECEIVED', 200);
+                    }
+                }
+
+                // FLUJO 1 - Paso 2A: El cliente responde con su ruta (ej. "De la universidad continental a real plaza")
+                $matchRuta = [];
+                $esRutaValida = preg_match($patronViajeConPrefijo, $cuerpoTexto, $matchRuta)
+                    || (! $esSaludoSimple && preg_match($patronViajeDirecto, $cuerpoTexto, $matchRuta));
+
+                if ($esRutaValida) {
+                    $origen = ucfirst(trim($matchRuta[1], " ,.:\n\r"));
+                    $destino = ucfirst(trim($matchRuta[2], " ,.:\n\r"));
+                    $precioIncluido = null;
+
+                    if (! empty($matchRuta[3])) {
+                        $precioIncluido = max(3.0, (float) str_replace(',', '.', $matchRuta[3]));
                     } elseif (preg_match('/(?:s\/\.?\s*|por\s+|oferta\s*:?\s*|ofrezco\s+)(\d+(?:[\.,]\d+)?)/i', $cuerpoTexto, $mPrecio)) {
-                        $oferta = (float) str_replace(',', '.', $mPrecio[1]);
+                        $precioIncluido = max(3.0, (float) str_replace(',', '.', $mPrecio[1]));
                     }
 
+                    $geocoder = app(GeocodingService::class);
+                    $coordOrigen = $geocoder->coordenadas($origen);
+                    $coordDestino = $geocoder->coordenadas($destino);
+                    $precioSugerido = $geocoder->precioSugerido(
+                        $coordOrigen['lat'],
+                        $coordOrigen['lng'],
+                        $coordDestino['lat'],
+                        $coordDestino['lng']
+                    );
+
+                    $ofertaGuardar = $precioIncluido ?? $precioSugerido;
+
+                    // Cancelar solicitudes pendientes previas del mismo número para no duplicar en el Radar
+                    Supabase::table('solicitudes_viaje')
+                        ->where('cliente_telefono', $remitente)
+                        ->whereIn('estado', ['pendiente', 'en_subasta'])
+                        ->update([
+                            'estado' => 'cancelado',
+                            'updated_at' => now()->toIso8601String(),
+                        ]);
+
+                    // Insertar en Supabase incluyendo precio_sugerido (NOT NULL) para que se vea al instante en la PWA
                     Supabase::table('solicitudes_viaje')->insert([
                         'cliente_nombre' => $nombreContacto,
                         'cliente_telefono' => $remitente,
                         'origen_texto' => $origen,
-                        'origen_lat' => -12.0681,
-                        'origen_lng' => -75.2069,
+                        'origen_lat' => $coordOrigen['lat'],
+                        'origen_lng' => $coordOrigen['lng'],
                         'destino_texto' => $destino,
-                        'destino_lat' => -12.0558,
-                        'destino_lng' => -75.2185,
+                        'destino_lat' => $coordDestino['lat'],
+                        'destino_lng' => $coordDestino['lng'],
                         'tipo_servicio' => 'urbano',
-                        'oferta_cliente' => $oferta,
+                        'precio_sugerido' => $precioSugerido,
+                        'oferta_cliente' => $ofertaGuardar,
                         'estado' => 'pendiente',
                         'created_at' => now()->toIso8601String(),
                         'updated_at' => now()->toIso8601String(),
                     ]);
 
-                    $this->enviarMensajeWhatsApp(
-                        $remitente,
-                        "¡Perfecto! 📍 Ahora necesito saber tu punto exacto.\n\n".
-                        'Toca el ícono del clip (📎) o el "+" y envíame tu Ubicación actual. Así alertaré a los conductores que estén más cerca de ti.'
-                    );
+                    if ($precioIncluido !== null) {
+                        $ofertaFmt = number_format($precioIncluido, 2, '.', '');
+                        $this->enviarMensajeWhatsApp(
+                            $remitente,
+                            "¡Perfecto! 📍 Ruta registrada (*{$origen}* ➔ *{$destino}*) con tu oferta de *S/ {$ofertaFmt}*.\n\n".
+                            'Toca el ícono del clip (📎) o el "+" y envíame tu *Ubicación actual*. Así alertaré a los conductores que estén más cerca de ti.'
+                        );
+                    } else {
+                        $sugeridoFmt = number_format($precioSugerido, 2, '.', '');
+                        $ejemploMenor = number_format(max(5.0, $precioSugerido - 1.0), 0, '.', '');
+
+                        $this->enviarMensajeWhatsApp(
+                            $remitente,
+                            "🛣️ *¡Ruta registrada!*\n".
+                            "📍 *Origen:* {$origen}\n".
+                            "🏁 *Destino:* {$destino}\n".
+                            "💡 *Tarifa sugerida:* S/ {$sugeridoFmt}\n\n".
+                            "💰 *¿Cuánto estás dispuesto a pagar por este viaje?*\n".
+                            "Escribe tu oferta en soles (Ejemplo: *{$ejemploMenor}* o *S/ {$sugeridoFmt}*)."
+                        );
+                    }
 
                     return response('EVENT_RECEIVED', 200);
                 }

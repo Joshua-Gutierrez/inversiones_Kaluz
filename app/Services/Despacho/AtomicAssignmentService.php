@@ -106,7 +106,7 @@ class AtomicAssignmentService
             $query->orderByRaw("CASE WHEN tipo_servicio = 'turismo' THEN 0 ELSE 1 END");
         }
 
-        $resultados = $query->orderBy('created_at', 'asc')->get();
+        $resultados = $query->orderBy('id', 'desc')->get();
 
         if ($esFlotaPropia) {
             return $resultados->sortBy(fn ($s) => $s->tipo_servicio === 'turismo' ? 0 : 1)->values();
@@ -118,7 +118,7 @@ class AtomicAssignmentService
     /**
      * Acepta el viaje AL PRECIO DEL CLIENTE (oferta_cliente) de forma atómica.
      *
-     * Patrón obligatorio (CONTEXT.md Regla #1): UPDATE condicionado por estado = 'pendiente'
+     * Patrón obligatorio (CONTEXT.md Regla #1): UPDATE condicionado por estado pendiente/en_subasta
      * y conductor_id IS NULL. Si devuelve 0 filas afectadas, otro conductor ganó la carrera.
      *
      * @return array{ok: bool, mensaje: string, data: ?object}
@@ -149,10 +149,10 @@ class AtomicAssignmentService
 
             $precioCliente = (float) $solicitud->oferta_cliente;
 
-            // UPDATE atómico: solo gana quien llega primero con estado pendiente y sin conductor.
+            // UPDATE atómico: solo gana quien llega primero con estado pendiente/en_subasta y sin conductor.
             $afectadas = $this->tabla('solicitudes_viaje')
                 ->where('id', $solicitudId)
-                ->where('estado', 'pendiente')
+                ->whereIn('estado', ['pendiente', 'en_subasta'])
                 ->whereNull('conductor_id')
                 ->update([
                     'conductor_id' => $conductorId,

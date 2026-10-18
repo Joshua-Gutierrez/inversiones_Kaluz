@@ -174,12 +174,26 @@ class ConductorPwaController extends Controller
         }
 
         $geocodificador = app(GeocodingService::class);
+        $coordOrigenFallback = $geocodificador->coordenadas($viajeActivo->origen_texto);
+        $coordDestinoFallback = $geocodificador->coordenadas($viajeActivo->destino_texto);
+
+        $ubicacionOrigen = [
+            'lat' => ! empty($viajeActivo->origen_lat) ? (float) $viajeActivo->origen_lat : $coordOrigenFallback['lat'],
+            'lng' => ! empty($viajeActivo->origen_lng) ? (float) $viajeActivo->origen_lng : $coordOrigenFallback['lng'],
+            'precision' => ! empty($viajeActivo->origen_lat) ? 'exacta' : $coordOrigenFallback['precision'],
+        ];
+
+        $ubicacionDestino = [
+            'lat' => ! empty($viajeActivo->destino_lat) ? (float) $viajeActivo->destino_lat : $coordDestinoFallback['lat'],
+            'lng' => ! empty($viajeActivo->destino_lng) ? (float) $viajeActivo->destino_lng : $coordDestinoFallback['lng'],
+            'precision' => ! empty($viajeActivo->destino_lat) ? 'exacta' : $coordDestinoFallback['precision'],
+        ];
 
         return view('despacho.viaje-activo', [
             'conductor' => $conductor,
             'viajeActivo' => $viajeActivo,
-            'ubicacionOrigen' => $geocodificador->coordenadas($viajeActivo->origen_texto),
-            'ubicacionDestino' => $geocodificador->coordenadas($viajeActivo->destino_texto),
+            'ubicacionOrigen' => $ubicacionOrigen,
+            'ubicacionDestino' => $ubicacionDestino,
         ]);
     }
 
