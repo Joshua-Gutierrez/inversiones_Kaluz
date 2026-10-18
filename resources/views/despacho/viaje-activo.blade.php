@@ -5,7 +5,7 @@
 @section('header_sub', $conductor->placa . ' • ' . $conductor->nombre)
 
 @section('head')
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+@vite('resources/js/mapa.js')
 @endsection
 
 @section('content')
@@ -427,6 +427,4 @@
     }
 </script>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>initViajeMapa();</script>
 @endsection

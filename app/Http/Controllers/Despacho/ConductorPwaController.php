@@ -82,10 +82,8 @@ class ConductorPwaController extends Controller
             return redirect()->route('despacho.seleccion');
         }
 
-        $conductor = DB::table('conductores')
-            ->where('id', $conductorId)
-            ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'telefono_whatsapp', 'estado_comision', 'habilitado', 'lat_actual', 'lng_actual')
-            ->first();
+        $panel = app(AtomicAssignmentService::class)->panelDe((int) $conductorId);
+        $conductor = $panel?->conductor;
 
         if (! $conductor) {
             $request->session()->forget('conductor_id');
@@ -97,12 +95,9 @@ class ConductorPwaController extends Controller
             return redirect()->route('despacho.pwa.bloqueado');
         }
 
-        $viajeActivo = app(AtomicAssignmentService::class)
-            ->viajeActivoDe((int) $conductor->id);
-
         return view('despacho.radar', [
             'conductor' => $conductor,
-            'viajeActivo' => $viajeActivo,
+            'viajeActivo' => $panel->viaje_activo,
         ]);
     }
 
@@ -117,17 +112,14 @@ class ConductorPwaController extends Controller
             return redirect()->route('despacho.seleccion');
         }
 
-        $conductor = DB::table('conductores')
-            ->where('id', $conductorId)
-            ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'habilitado', 'lat_actual', 'lng_actual')
-            ->first();
+        $panel = app(AtomicAssignmentService::class)->panelDe((int) $conductorId);
+        $conductor = $panel?->conductor;
 
         if (! $conductor || ! $conductor->habilitado) {
             return redirect()->route('despacho.pwa.bloqueado');
         }
 
-        $viajeActivo = app(AtomicAssignmentService::class)
-            ->viajeActivoDe((int) $conductor->id);
+        $viajeActivo = $panel->viaje_activo;
 
         if (! $viajeActivo) {
             return redirect()->route('despacho.pwa');

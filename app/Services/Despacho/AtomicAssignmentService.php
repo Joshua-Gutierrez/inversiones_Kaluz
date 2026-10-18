@@ -394,6 +394,99 @@ class AtomicAssignmentService
     }
 
     /**
+     * Panel del conductor (datos + viaje activo) en UNA sola ida a la base de datos.
+     *
+     * La latencia por consulta al pooler de Supabase (~450 ms) domina el tiempo de
+     * respuesta de la PWA, por eso se agrupan las lecturas en un solo round-trip.
+     *
+     * @return object{conductor: ?object, viaje_activo: ?object}|null
+     */
+    public function panelDe(int $conductorId): ?object
+    {
+        $fila = DB::selectOne(<<<'SQL'
+            WITH c AS (
+                SELECT id, nombre, placa, modelo_vehiculo, telefono_whatsapp,
+                       estado_comision, habilitado, lat_actual, lng_actual, tipo_flota
+                FROM conductores
+                WHERE id = ?
+            ),
+            act AS (
+                SELECT a.*
+                FROM solicitudes_viaje a
+                WHERE a.conductor_id = ? AND a.estado IN ('asignado', 'en_ruta')
+                ORDER BY a.updated_at DESC
+                LIMIT 1
+            )
+            SELECT
+                (SELECT row_to_json(c) FROM c) AS conductor,
+                (SELECT row_to_json(act) FROM act) AS viaje_activo
+            SQL, [$conductorId, $conductorId]);
+
+        if (! $fila) {
+            return null;
+        }
+
+        return (object) [
+            'conductor' => $fila->conductor ? json_decode($fila->conductor) : null,
+            'viaje_activo' => $fila->viaje_activo ? json_decode($fila->viaje_activo) : null,
+        ];
+    }
+
+    /**
+     * Resumen del radar (conductor + solicitudes disponibles + viaje activo) en UNA consulta.
+     *
+     * @return object{conductor: ?object, solicitudes: array<int, object>, viaje_activo: ?object}|null
+     */
+    public function radarDe(int $conductorId): ?object
+    {
+        $fila = DB::selectOne(<<<'SQL'
+            WITH c AS (
+                SELECT id, nombre, placa, modelo_vehiculo, telefono_whatsapp,
+                       estado_comision, habilitado, lat_actual, lng_actual, tipo_flota
+                FROM conductores
+                WHERE id = ?
+            ),
+            sol AS (
+                SELECT s.*,
+                       CASE
+                           WHEN c.tipo_flota IN ('propia_combi', 'propia_auto')
+                                AND s.tipo_servicio = 'turismo' THEN 0
+                           ELSE 1
+                       END AS orden_flota
+                FROM solicitudes_viaje s
+                CROSS JOIN c
+                WHERE s.estado IN ('pendiente', 'en_subasta')
+                  AND s.conductor_id IS NULL
+                  AND (
+                      c.tipo_flota IN ('propia_combi', 'propia_auto')
+                      OR s.tipo_servicio <> 'turismo'
+                  )
+            ),
+            act AS (
+                SELECT a.*
+                FROM solicitudes_viaje a
+                WHERE a.conductor_id = ? AND a.estado IN ('asignado', 'en_ruta')
+                ORDER BY a.updated_at DESC
+                LIMIT 1
+            )
+            SELECT
+                (SELECT row_to_json(c) FROM c) AS conductor,
+                (SELECT COALESCE(json_agg(sol ORDER BY sol.orden_flota, sol.created_at), '[]'::json) FROM sol) AS solicitudes,
+                (SELECT row_to_json(act) FROM act) AS viaje_activo
+            SQL, [$conductorId, $conductorId]);
+
+        if (! $fila) {
+            return null;
+        }
+
+        return (object) [
+            'conductor' => $fila->conductor ? json_decode($fila->conductor) : null,
+            'solicitudes' => json_decode($fila->solicitudes ?? '[]') ?: [],
+            'viaje_activo' => $fila->viaje_activo ? json_decode($fila->viaje_activo) : null,
+        ];
+    }
+
+    /**
      * Doble seguro del candado financiero (además del middleware de Dev 2):
      * consulta directa a la columna habilitado del contrato.
      */
