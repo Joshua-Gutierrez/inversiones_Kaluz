@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#0B1B3D">
+    <meta name="theme-color" content="#0A1329">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,9 +17,13 @@
     <link rel="icon" type="image/png" sizes="192x192" href="{{ asset('icons/icon-192.png') }}">
     <link rel="apple-touch-icon" href="{{ asset('icons/icon-192.png') }}">
 
+    <!-- Google Fonts: Montserrat & Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700;800;900&display=swap" rel="stylesheet">
+
+    <!-- RemixIcon (Iconos reales vectoriales, cero emojis) -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css" rel="stylesheet">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -28,9 +32,10 @@
                 extend: {
                     colors: {
                         kaluz: {
-                            navy: '#0B1B3D',
+                            navy: '#0A1329',
+                            card: '#111E3B',
                             red: '#E31B23',
-                            bg: '#F4F5F7',
+                            bg: '#DCE6F2',
                         },
                     },
                     fontFamily: {
@@ -49,29 +54,69 @@
     </style>
     @yield('head')
 </head>
-<body class="bg-[#F4F5F7] font-body text-[#0B1B3D] min-h-screen flex flex-col select-none antialiased">
+@php
+    $temaOscuro = trim($__env->yieldContent('tema', 'oscuro')) === 'oscuro';
+@endphp
+<body class="{{ $temaOscuro ? 'bg-[#081124] text-white' : 'bg-[#DCE6F2] text-[#0A1329]' }} font-body min-h-screen flex flex-col select-none antialiased">
 
-    {{-- Header azul marino corporativo --}}
-    <header class="bg-[#0B1B3D] px-4 py-3 flex items-center justify-between shadow-md sticky top-0 z-40 safe-top">
-        <div class="flex items-center gap-2.5">
-            <span class="w-9 h-9 rounded-xl bg-[#E31B23] flex items-center justify-center font-headline font-black text-white text-sm shadow-md">K</span>
-            <div class="leading-tight">
-                <p class="font-headline font-bold text-white text-sm">@yield('header_titulo', 'Taxi KALUZ')</p>
-                <p class="text-[11px] text-slate-300 font-body">@yield('header_sub', 'Conductor • Huancayo')</p>
+    {{-- Header superior móvil --}}
+    @hasSection('ocultar_header')
+    @else
+        <header class="bg-[#0A1329] border-b border-white/10 px-4 py-3 sticky top-0 z-40">
+            <div class="max-w-md mx-auto flex items-center justify-between gap-2">
+                <a href="{{ route('despacho.pwa') }}" class="font-headline font-black text-xl tracking-wider text-white shrink-0">
+                    KALUZ
+                </a>
+
+                @yield('header_centro')
+
+                <div class="flex items-center gap-2 min-w-0">
+                    @yield('header_derecha')
+                </div>
             </div>
-        </div>
-        @yield('header_derecha')
-    </header>
+        </header>
+    @endif
 
-    {{-- Contenido principal mobile-first (viewport 390 px) --}}
-    <main class="flex-1 overflow-y-auto p-4 max-w-md w-full mx-auto pb-24">
+    {{-- Contenido principal mobile-first (viewport ~410px centrado en desktop) --}}
+    <main class="flex-1 overflow-y-auto px-4 pt-4 pb-28 max-w-md w-full mx-auto">
         @yield('content')
     </main>
+
+    {{-- Barra de navegación inferior (4 pestañas de la Imagen 1 con iconos reales) --}}
+    @hasSection('ocultar_nav')
+    @else
+        <nav class="fixed bottom-0 inset-x-0 z-40 bg-[#1B2845]/95 backdrop-blur-md border-t border-white/10">
+            <div class="max-w-md mx-auto grid grid-cols-4 text-[11px] font-medium">
+                <a href="{{ route('despacho.pwa') }}"
+                   class="flex flex-col items-center justify-center py-2.5 px-1 transition {{ request()->routeIs('despacho.pwa') || request()->routeIs('despacho.viaje') ? 'bg-[#081124] text-[#E31B23] font-bold' : 'text-slate-300 hover:text-white' }}">
+                    <i class="ri-map-2-fill text-xl leading-none mb-1"></i>
+                    <span>Radar/Mapa</span>
+                </a>
+
+                <a href="{{ route('despacho.cuota') }}"
+                   class="flex flex-col items-center justify-center py-2.5 px-1 transition {{ request()->routeIs('despacho.cuota') || request()->routeIs('despacho.desbloqueado') ? 'bg-[#081124] text-emerald-400 font-bold' : 'text-slate-300 hover:text-white' }}">
+                    <i class="ri-cash-line text-xl leading-none mb-1"></i>
+                    <span class="leading-tight text-center">Mis Ingresos<br><span class="text-[9px] opacity-80">(S/ 1.00 diario)</span></span>
+                </a>
+
+                <a href="{{ route('despacho.seleccion') }}"
+                   class="flex flex-col items-center justify-center py-2.5 px-1 transition {{ request()->routeIs('despacho.seleccion') ? 'bg-[#081124] text-white font-bold' : 'text-slate-300 hover:text-white' }}">
+                    <i class="ri-user-3-fill text-xl leading-none mb-1"></i>
+                    <span>Mi Cuenta</span>
+                </a>
+
+                <a href="{{ route('despacho.pwa.bloqueado') }}"
+                   class="flex flex-col items-center justify-center py-2.5 px-1 transition {{ request()->routeIs('despacho.pwa.bloqueado') ? 'bg-[#081124] text-[#E31B23] font-bold' : 'text-slate-300 hover:text-white' }}">
+                    <i class="ri-notification-3-fill text-xl leading-none mb-1"></i>
+                    <span>Alertas</span>
+                </a>
+            </div>
+        </nav>
+    @endif
 
     @yield('footer')
 
     <script>
-        // Registro del Service Worker (PWA instalable)
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('{{ asset('sw.js') }}').catch(() => {});

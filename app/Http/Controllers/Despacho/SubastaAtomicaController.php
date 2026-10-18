@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\Despacho\AtomicAssignmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 /**
  * 👨‍💻 ZONA DEV 1 - API de Subasta Atómica (JSON para la PWA del conductor)
@@ -30,7 +31,7 @@ class SubastaAtomicaController extends Controller
             return response()->json(['ok' => false, 'mensaje' => 'Conductor no identificado.', 'data' => null], 401);
         }
 
-        $conductor = \App\Models\Conductor::find($conductorId);
+        $conductor = $this->asignacion->obtenerConductor($conductorId);
 
         if (! $conductor) {
             return response()->json(['ok' => false, 'mensaje' => 'Conductor no encontrado.', 'data' => null], 404);
@@ -82,7 +83,7 @@ class SubastaAtomicaController extends Controller
         }
 
         $datos = $request->validate([
-            'monto'             => ['required', 'numeric', 'min:1', 'max:999'],
+            'monto' => ['required', 'numeric', 'min:1', 'max:999'],
             'tiempo_llegada_min' => ['required', 'integer', 'min:1', 'max:120'],
         ], [], ['monto' => 'monto', 'tiempo_llegada_min' => 'tiempo de llegada']);
 
@@ -200,17 +201,17 @@ class SubastaAtomicaController extends Controller
         $desdePublicacion = $s->created_at ?? null;
 
         return (object) [
-            'id'                => (int) $s->id,
-            'cliente_nombre'    => $s->cliente_nombre,
-            'cliente_telefono'  => $s->cliente_telefono,
-            'origen_texto'      => $s->origen_texto,
-            'destino_texto'     => $s->destino_texto,
-            'tipo_servicio'     => $s->tipo_servicio,
-            'oferta_cliente'    => (float) $s->oferta_cliente,
-            'precio_final'      => $s->precio_final !== null ? (float) $s->precio_final : null,
-            'estado'            => $s->estado,
-            'conductor_id'      => $s->conductor_id ? (int) $s->conductor_id : null,
-            'hace_segundos'     => $desdePublicacion ? max(0, now()->diffInSeconds($desdePublicacion, true)) : null,
+            'id' => (int) $s->id,
+            'cliente_nombre' => $s->cliente_nombre,
+            'cliente_telefono' => $s->cliente_telefono,
+            'origen_texto' => $s->origen_texto,
+            'destino_texto' => $s->destino_texto,
+            'tipo_servicio' => $s->tipo_servicio,
+            'oferta_cliente' => (float) $s->oferta_cliente,
+            'precio_final' => $s->precio_final !== null ? (float) $s->precio_final : null,
+            'estado' => $s->estado,
+            'conductor_id' => $s->conductor_id ? (int) $s->conductor_id : null,
+            'hace_segundos' => $desdePublicacion ? (int) max(0, now()->diffInSeconds(Carbon::parse($desdePublicacion), true)) : null,
         ];
     }
 }

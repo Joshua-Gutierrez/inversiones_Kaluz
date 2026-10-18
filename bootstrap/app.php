@@ -13,6 +13,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->validateCsrfTokens(except: [
+            'api/webhook',
+            'api/webhook/*',
+            'bot/webhook/*',
             'conductor/api/ofertas/*/aceptar',
         ]);
     })

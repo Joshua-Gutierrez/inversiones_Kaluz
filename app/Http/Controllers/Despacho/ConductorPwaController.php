@@ -24,6 +24,7 @@ class ConductorPwaController extends Controller
         if (extension_loaded('pdo_pgsql')) {
             try {
                 DB::connection()->getPdo();
+
                 return DB::table($table);
             } catch (\Throwable) {
                 // Si la conexión falla, cae a Supabase REST
@@ -56,7 +57,7 @@ class ConductorPwaController extends Controller
     public function entrar(Request $request): RedirectResponse
     {
         $datos = $request->validate([
-            'conductor_id' => ['nullable', 'integer', 'exists:conductores,id'],
+            'conductor_id' => ['nullable', 'integer'],
             'telefono_whatsapp' => ['nullable', 'string', 'max:20'],
         ], [], [
             'conductor_id' => 'conductor',
@@ -159,16 +160,77 @@ class ConductorPwaController extends Controller
     }
 
     /**
-     * GET /conductor/bloqueado - Pantalla roja del candado financiero/documentario.
+     * GET /conductor/bloqueado - Pantalla de alerta del candado financiero/documentario.
      */
     public function bloqueado(Request $request): View
     {
+        $conductorId = $request->session()->get('conductor_id');
+        $conductor = $conductorId
+            ? $this->tabla('conductores')->where('id', $conductorId)->first()
+            : null;
+
         $motivo = $request->session()->get(
             'motivo_bloqueo',
-            'Cuenta bloqueada: regulariza tu comisión de S/ 1.00 diario o tu permiso municipal para volver a recibir viajes.'
+            'Tienes 1 cuota diaria de S/ 1.00 pendiente para poder seguir recibiendo viajes hoy. ¡No te quedes sin trabajar!'
         );
 
-        return view('despacho.bloqueado', ['motivo' => $motivo]);
+        return view('despacho.bloqueado', [
+            'motivo' => $motivo,
+            'conductor' => $conductor,
+        ]);
+    }
+
+    /**
+     * GET /conductor/cuota - Pantalla de Pago Móvil de Cuota Diaria S/ 1.00 (Yape/Plin QR).
+     */
+    public function cuota(Request $request): View
+    {
+        $conductorId = $request->session()->get('conductor_id');
+        $conductor = $conductorId
+            ? $this->tabla('conductores')->where('id', $conductorId)->first()
+            : $this->tabla('conductores')->orderBy('id')->first();
+
+        return view('despacho.pagar-cuota', [
+            'conductor' => $conductor,
+        ]);
+    }
+
+    /**
+     * POST /conductor/cuota/pagar - Registra el pago de S/ 1.00 y desbloquea al conductor.
+     */
+    public function pagarCuota(Request $request): RedirectResponse
+    {
+        $conductorId = $request->input('conductor_id') ?? $request->session()->get('conductor_id');
+
+        if ($conductorId) {
+            $request->session()->put('conductor_id', (int) $conductorId);
+
+            $this->tabla('conductores')->where('id', (int) $conductorId)->update([
+                'habilitado' => true,
+                'estado_comision' => 'al_dia',
+                'fecha_vencimiento_comision' => now()->addDay(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return redirect()->route('despacho.desbloqueado');
+    }
+
+    /**
+     * GET /conductor/desbloqueado - Pantalla de confirmación de desbloqueo inmediato.
+     */
+    public function desbloqueado(Request $request): View
+    {
+        $conductorId = $request->session()->get('conductor_id');
+        $conductor = $conductorId
+            ? $this->tabla('conductores')->where('id', $conductorId)->first()
+            : $this->tabla('conductores')->where('habilitado', true)->first();
+
+        return view('despacho.desbloqueado', [
+            'conductor' => $conductor,
+            'fechaPago' => now()->format('d/m/Y'),
+            'horaPago' => now()->format('h:i A'),
+        ]);
     }
 
     /**

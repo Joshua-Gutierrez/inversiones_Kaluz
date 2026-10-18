@@ -1,8 +1,18 @@
 @extends('layouts.pwa-mobile')
 
 @section('titulo', 'Viaje en Curso - Taxi KALUZ')
-@section('header_titulo', 'Viaje en curso')
-@section('header_sub', $conductor->placa . ' • ' . $conductor->nombre)
+@section('tema', 'oscuro')
+
+@section('header_centro')
+    <span class="inline-flex items-center gap-1.5 text-[11px] font-headline font-bold uppercase tracking-wide px-3 py-1 rounded-full bg-emerald-500 text-white shadow-[0_0_16px_rgba(16,185,129,0.55)]">
+        <i class="ri-navigation-fill text-xs"></i>
+        EN RUTA GPS
+    </span>
+@endsection
+
+@section('header_derecha')
+    <span class="text-xs font-bold text-slate-200">{{ $conductor->placa }}</span>
+@endsection
 
 @section('head')
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -17,80 +27,92 @@
 >
     {{-- Aviso de resultado de acciones --}}
     <div x-show="aviso" x-transition.opacity
-        class="rounded-2xl px-4 py-3 text-sm font-body border"
-        :class="avisoOk ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-red-100 text-red-800 border-red-300'">
+        class="rounded-2xl px-4 py-3 text-xs font-medium border flex items-center gap-2"
+        :class="avisoOk ? 'bg-emerald-500/20 text-emerald-200 border-emerald-500/40' : 'bg-red-500/20 text-red-200 border-red-500/40'">
+        <i :class="avisoOk ? 'ri-checkbox-circle-fill text-emerald-400' : 'ri-error-warning-fill text-red-400'"></i>
         <span x-text="aviso"></span>
     </div>
 
     {{-- Datos del viaje --}}
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3">
-        <div class="flex justify-between items-start">
-            <div class="min-w-0">
-                <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border"
+    <div class="bg-[#111E3B] rounded-2xl border border-white/10 p-4 space-y-3 shadow-lg">
+        <div class="flex justify-between items-start gap-3">
+            <div class="min-w-0 space-y-1.5">
+                <span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2.5 py-0.5 rounded-full border"
                     :class="estado === 'en_ruta'
-                        ? 'bg-amber-100 text-amber-800 border-amber-300'
-                        : 'bg-emerald-100 text-emerald-800 border-emerald-300'">
-                    <span x-text="estado === 'en_ruta' ? 'EN RUTA' : 'ASIGNADO'"></span>
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'">
+                    <i class="ri-taxi-fill"></i>
+                    <span x-text="estado === 'en_ruta' ? 'EN RUTA AL DESTINO' : 'ASIGNADO - IR A RECOGER'"></span>
                 </span>
-                <h3 class="font-headline font-bold text-base mt-2 leading-snug">
-                    {{ $viajeActivo->origen_texto }}
-                    <span class="text-[#E31B23]">→</span>
-                    {{ $viajeActivo->destino_texto }}
-                </h3>
-                <p class="text-xs text-slate-500 mt-1">{{ ucfirst($viajeActivo->tipo_servicio) }}</p>
+                <div class="text-sm space-y-1 pt-1">
+                    <p class="flex items-start gap-1.5 text-white font-semibold">
+                        <i class="ri-map-pin-2-fill text-[#E31B23] shrink-0 mt-0.5"></i>
+                        <span>{{ $viajeActivo->origen_texto }}</span>
+                    </p>
+                    <p class="flex items-start gap-1.5 text-slate-200 font-semibold">
+                        <i class="ri-flag-2-fill text-emerald-400 shrink-0 mt-0.5"></i>
+                        <span>{{ $viajeActivo->destino_texto }}</span>
+                    </p>
+                </div>
             </div>
             <div class="text-right shrink-0">
-                <span class="text-[10px] text-slate-400 uppercase font-bold block">Final</span>
-                <span class="font-headline font-black text-2xl text-[#0B1B3D]">S/ {{ number_format($viajeActivo->precio_final ?? $viajeActivo->oferta_cliente, 2) }}</span>
+                <span class="text-[10px] text-slate-400 uppercase font-bold block">Tarifa acordada</span>
+                <span class="font-headline font-black text-2xl text-white">S/ {{ number_format($viajeActivo->precio_final ?? $viajeActivo->oferta_cliente, 2) }}</span>
             </div>
         </div>
     </div>
 
     {{-- Mapa libre (Leaflet + OpenStreetMap): recojo (asignado) o destino (en ruta) --}}
-    <div class="relative z-0 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div id="mapa-viaje" class="w-full h-60 bg-[#F4F5F7]"></div>
+    <div class="relative z-0 bg-[#111E3B] rounded-2xl shadow-lg border border-white/10 overflow-hidden">
+        <div id="mapa-viaje" class="w-full h-64 bg-slate-800"></div>
 
         <div id="mapa-eta"
-            class="absolute left-3 bottom-3 z-[500] bg-[#0B1B3D]/90 text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-md">
+            class="absolute left-3 bottom-3 z-[500] bg-[#0A1329]/95 text-white text-[11px] font-bold px-3 py-1.5 rounded-full shadow-md border border-white/15">
             Calculando ruta…
         </div>
 
-        <span class="absolute top-3 right-3 z-[500] bg-white/90 text-[10px] font-bold uppercase tracking-wide text-[#0B1B3D] px-2 py-1 rounded-full shadow-sm">
-            En vivo
+        <span class="absolute top-3 right-3 z-[500] bg-[#0A1329]/90 text-emerald-400 text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full shadow-sm border border-emerald-500/30 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> GPS En vivo
         </span>
 
         <a href="https://www.google.com/maps/dir/?api=1&destination={{ $viajeActivo->estado === 'en_ruta' ? $ubicacionDestino['lat'].','.$ubicacionDestino['lng'] : $ubicacionOrigen['lat'].','.$ubicacionOrigen['lng'] }}"
             target="_blank" rel="noopener"
-            class="absolute right-3 bottom-3 z-[500] bg-white/95 text-[#0B1B3D] text-[10px] font-bold px-2.5 py-1.5 rounded-full shadow-sm border border-slate-200">
-            Google Maps ↗
+            class="absolute right-3 bottom-3 z-[500] bg-white text-[#0A1329] text-[10px] font-bold px-2.5 py-1.5 rounded-full shadow-sm flex items-center gap-1">
+            <i class="ri-compass-3-line"></i>
+            <span>Navegar</span>
         </a>
     </div>
 
     {{-- Datos del cliente --}}
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
-        <h4 class="font-headline font-bold text-sm mb-2">Pasajero</h4>
-        <div class="flex items-center justify-between gap-3">
-            <div class="min-w-0">
-                <p class="font-bold text-sm truncate">{{ $viajeActivo->cliente_nombre ?: 'Pasajero' }}</p>
-                <p class="text-xs text-slate-500">{{ $viajeActivo->cliente_telefono }}</p>
+    <div class="bg-[#111E3B] rounded-2xl border border-white/10 p-4 flex items-center justify-between gap-3 shadow-lg">
+        <div class="flex items-center gap-3 min-w-0">
+            <div class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white shrink-0">
+                <i class="ri-user-smile-line text-lg"></i>
             </div>
-            <a href="https://wa.me/{{ preg_replace('/\D/', '', $viajeActivo->cliente_telefono) }}"
-                class="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl px-4 py-2.5 text-xs shadow-sm">
-                WhatsApp
-            </a>
+            <div class="min-w-0">
+                <p class="font-bold text-sm text-white truncate">{{ $viajeActivo->cliente_nombre ?: 'Pasajero WhatsApp' }}</p>
+                <p class="text-xs text-slate-400">{{ $viajeActivo->cliente_telefono }}</p>
+            </div>
         </div>
+        <a href="https://wa.me/{{ preg_replace('/\D/', '', $viajeActivo->cliente_telefono) }}"
+            target="_blank"
+            class="shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl px-3.5 py-2.5 text-xs shadow-sm flex items-center gap-1.5">
+            <i class="ri-whatsapp-line text-base"></i>
+            <span>WhatsApp</span>
+        </a>
     </div>
 
     {{-- Botonera de estados --}}
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-2.5">
+    <div class="bg-[#111E3B] rounded-2xl border border-white/10 p-4 space-y-2.5 shadow-lg">
         <button
             x-show="estado === 'asignado'"
             type="button"
             @click="cambiarEstado('en_ruta')"
             :disabled="enviando"
-            class="w-full bg-[#E31B23] hover:bg-red-700 disabled:opacity-60 text-white font-bold rounded-xl shadow-md py-3.5 text-sm"
+            class="w-full bg-[#D91B23] hover:bg-[#B9151C] disabled:opacity-60 text-white font-bold rounded-xl shadow-md py-3.5 text-sm flex items-center justify-center gap-2"
         >
-            🚕 Voy en camino
+            <i class="ri-taxi-fill text-base"></i>
+            <span>Pasajero a bordo • Iniciar viaje</span>
         </button>
 
         <button
@@ -98,9 +120,10 @@
             type="button"
             @click="cambiarEstado('completado')"
             :disabled="enviando"
-            class="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold rounded-xl shadow-md py-3.5 text-sm"
+            class="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold rounded-xl shadow-md py-3.5 text-sm flex items-center justify-center gap-2"
         >
-            ✔ Finalizar viaje
+            <i class="ri-checkbox-circle-fill text-base"></i>
+            <span>Finalizar viaje</span>
         </button>
 
         <button
@@ -108,20 +131,17 @@
             type="button"
             @click="if (confirm('¿Cancelar este viaje? El pasajero será notificado.')) cambiarEstado('cancelado')"
             :disabled="enviando"
-            class="w-full bg-white border border-red-300 text-red-600 font-bold rounded-xl py-3 text-sm hover:bg-red-50"
+            class="w-full bg-[#081124] border border-red-500/40 text-red-400 font-bold rounded-xl py-3 text-xs hover:bg-red-500/10 flex items-center justify-center gap-1.5"
         >
-            ✕ Cancelar viaje
+            <i class="ri-close-circle-line text-sm"></i>
+            <span>Cancelar viaje</span>
         </button>
 
-        <p class="text-[11px] text-slate-400 text-center pt-1">
-            Tu GPS se comparte cada 5 s mientras el viaje esté activo.
+        <p class="text-[11px] text-slate-400 text-center pt-1 flex items-center justify-center gap-1">
+            <i class="ri-gps-line text-emerald-400"></i>
+            <span>Tu ubicación GPS se actualiza cada 5 s para el enlace del pasajero.</span>
         </p>
     </div>
-
-    <a href="{{ route('despacho.pwa') }}"
-        class="block text-center text-sm font-bold text-[#0B1B3D] py-2">
-        ← Volver al radar
-    </a>
 </div>
 @endsection
 

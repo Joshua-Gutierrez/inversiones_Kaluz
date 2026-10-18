@@ -3,6 +3,7 @@
 namespace App\Services\Despacho;
 
 use App\Models\Conductor;
+use App\Services\Supabase\Supabase;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -33,18 +34,42 @@ class AtomicAssignmentService
         'en_ruta' => ['completado', 'cancelado'],
     ];
 
-    private function tabla(string $table)
+    private function tienePdoPgsql(): bool
     {
-        if (extension_loaded('pdo_pgsql')) {
-            try {
-                DB::connection()->getPdo();
-                return DB::table($table);
-            } catch (\Throwable) {
-                // Fallback to Supabase REST
-            }
+        if (! extension_loaded('pdo_pgsql')) {
+            return false;
         }
 
-        return \App\Services\Supabase\Supabase::table($table);
+        try {
+            DB::connection()->getPdo();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function tabla(string $table)
+    {
+        if ($this->tienePdoPgsql()) {
+            return DB::table($table);
+        }
+
+        return Supabase::table($table);
+    }
+
+    private function transaccion(\Closure $callback): mixed
+    {
+        if ($this->tienePdoPgsql()) {
+            return DB::transaction($callback);
+        }
+
+        return $callback();
+    }
+
+    public function obtenerConductor(int $conductorId): ?object
+    {
+        return $this->tabla('conductores')->where('id', $conductorId)->first();
     }
 
     /**
@@ -57,7 +82,7 @@ class AtomicAssignmentService
      * se muestran primero a la flota propia (propia_combi / propia_auto); los afiliados
      * no las ven (quedan reservadas para la flota de la empresa).
      */
-    public function solicitudesDisponibles(Conductor $c)
+    public function solicitudesDisponibles(object $c)
     {
         $conductor = $this->tabla('conductores')
             ->where('id', $c->id)
@@ -81,7 +106,13 @@ class AtomicAssignmentService
             $query->orderByRaw("CASE WHEN tipo_servicio = 'turismo' THEN 0 ELSE 1 END");
         }
 
-        return $query->orderBy('created_at', 'asc')->get();
+        $resultados = $query->orderBy('created_at', 'asc')->get();
+
+        if ($esFlotaPropia) {
+            return $resultados->sortBy(fn ($s) => $s->tipo_servicio === 'turismo' ? 0 : 1)->values();
+        }
+
+        return $resultados;
     }
 
     /**
@@ -102,8 +133,8 @@ class AtomicAssignmentService
             ];
         }
 
-        return DB::transaction(function () use ($solicitudId, $conductorId) {
-            $solicitud = DB::table('solicitudes_viaje')
+        return $this->transaccion(function () use ($solicitudId, $conductorId) {
+            $solicitud = $this->tabla('solicitudes_viaje')
                 ->where('id', $solicitudId)
                 ->lockForUpdate()
                 ->first();
@@ -119,7 +150,7 @@ class AtomicAssignmentService
             $precioCliente = (float) $solicitud->oferta_cliente;
 
             // UPDATE atómico: solo gana quien llega primero con estado pendiente y sin conductor.
-            $afectadas = DB::table('solicitudes_viaje')
+            $afectadas = $this->tabla('solicitudes_viaje')
                 ->where('id', $solicitudId)
                 ->where('estado', 'pendiente')
                 ->whereNull('conductor_id')
@@ -140,7 +171,7 @@ class AtomicAssignmentService
 
             // Cerramos las contraofertas que quedaban abiertas de esta solicitud.
             // (ofertas_conductores solo tiene created_at, sin updated_at.)
-            DB::table('ofertas_conductores')
+            $this->tabla('ofertas_conductores')
                 ->where('solicitud_id', $solicitudId)
                 ->where('estado', 'pendiente')
                 ->update(['estado' => 'rechazada']);
@@ -148,7 +179,7 @@ class AtomicAssignmentService
             return [
                 'ok' => true,
                 'mensaje' => 'Viaje aceptado. ¡Vamos!',
-                'data' => DB::table('solicitudes_viaje')->where('id', $solicitudId)->first(),
+                'data' => $this->tabla('solicitudes_viaje')->where('id', $solicitudId)->first(),
             ];
         });
     }
@@ -177,8 +208,8 @@ class AtomicAssignmentService
             ];
         }
 
-        return DB::transaction(function () use ($solicitudId, $conductorId, $monto, $tiempoLlegadaMin) {
-            $solicitud = DB::table('solicitudes_viaje')
+        return $this->transaccion(function () use ($solicitudId, $conductorId, $monto, $tiempoLlegadaMin) {
+            $solicitud = $this->tabla('solicitudes_viaje')
                 ->where('id', $solicitudId)
                 ->lockForUpdate()
                 ->first();
@@ -201,7 +232,7 @@ class AtomicAssignmentService
 
             // Un conductor = una oferta por solicitud (UNIQUE solicitud_id + conductor_id):
             // upsert atómico en vez de duplicar.
-            DB::table('ofertas_conductores')->upsert(
+            $this->tabla('ofertas_conductores')->upsert(
                 [[
                     'solicitud_id' => $solicitudId,
                     'conductor_id' => $conductorId,
@@ -214,13 +245,13 @@ class AtomicAssignmentService
                 ['monto_contraoferta', 'tiempo_llegada_min', 'estado']
             );
 
-            $ofertaId = (int) DB::table('ofertas_conductores')
+            $ofertaId = (int) $this->tabla('ofertas_conductores')
                 ->where('solicitud_id', $solicitudId)
                 ->where('conductor_id', $conductorId)
                 ->value('id');
 
             // La solicitud pasa a subasta solo si seguía pendiente y sin conductor.
-            DB::table('solicitudes_viaje')
+            $this->tabla('solicitudes_viaje')
                 ->where('id', $solicitudId)
                 ->where('estado', 'pendiente')
                 ->whereNull('conductor_id')
@@ -229,7 +260,7 @@ class AtomicAssignmentService
             return [
                 'ok' => true,
                 'mensaje' => 'Contraoferta enviada al pasajero.',
-                'data' => DB::table('ofertas_conductores')->where('id', $ofertaId)->first(),
+                'data' => $this->tabla('ofertas_conductores')->where('id', $ofertaId)->first(),
             ];
         });
     }
@@ -245,8 +276,8 @@ class AtomicAssignmentService
      */
     public function aceptarContraoferta(int $ofertaId): array
     {
-        return DB::transaction(function () use ($ofertaId) {
-            $oferta = DB::table('ofertas_conductores')
+        return $this->transaccion(function () use ($ofertaId) {
+            $oferta = $this->tabla('ofertas_conductores')
                 ->where('id', $ofertaId)
                 ->lockForUpdate()
                 ->first();
@@ -280,7 +311,7 @@ class AtomicAssignmentService
             }
 
             // Asignación atómica: solo si la solicitud sigue pendiente/en_subasta y sin conductor.
-            $afectadas = DB::table('solicitudes_viaje')
+            $afectadas = $this->tabla('solicitudes_viaje')
                 ->where('id', $solicitudId)
                 ->whereNull('conductor_id')
                 ->whereIn('estado', ['pendiente', 'en_subasta'])
@@ -292,7 +323,7 @@ class AtomicAssignmentService
                 ]);
 
             if ($afectadas === 0) {
-                DB::table('ofertas_conductores')
+                $this->tabla('ofertas_conductores')
                     ->where('id', $ofertaId)
                     ->update(['estado' => 'rechazada']);
 
@@ -303,11 +334,11 @@ class AtomicAssignmentService
                 ];
             }
 
-            DB::table('ofertas_conductores')
+            $this->tabla('ofertas_conductores')
                 ->where('id', $ofertaId)
                 ->update(['estado' => 'aceptada']);
 
-            DB::table('ofertas_conductores')
+            $this->tabla('ofertas_conductores')
                 ->where('solicitud_id', $solicitudId)
                 ->where('id', '!=', $ofertaId)
                 ->where('estado', 'pendiente')
@@ -316,7 +347,7 @@ class AtomicAssignmentService
             return [
                 'ok' => true,
                 'mensaje' => 'Contraoferta aceptada. Viaje asignado.',
-                'data' => DB::table('solicitudes_viaje')->where('id', $solicitudId)->first(),
+                'data' => $this->tabla('solicitudes_viaje')->where('id', $solicitudId)->first(),
             ];
         });
     }
@@ -330,8 +361,8 @@ class AtomicAssignmentService
      */
     public function actualizarEstadoViaje(int $solicitudId, int $conductorId, string $nuevoEstado): array
     {
-        return DB::transaction(function () use ($solicitudId, $conductorId, $nuevoEstado) {
-            $viaje = DB::table('solicitudes_viaje')
+        return $this->transaccion(function () use ($solicitudId, $conductorId, $nuevoEstado) {
+            $viaje = $this->tabla('solicitudes_viaje')
                 ->where('id', $solicitudId)
                 ->where('conductor_id', $conductorId)
                 ->lockForUpdate()
@@ -355,7 +386,7 @@ class AtomicAssignmentService
                 ];
             }
 
-            $afectadas = DB::table('solicitudes_viaje')
+            $afectadas = $this->tabla('solicitudes_viaje')
                 ->where('id', $solicitudId)
                 ->where('conductor_id', $conductorId)
                 ->where('estado', $viaje->estado)
@@ -375,7 +406,7 @@ class AtomicAssignmentService
             return [
                 'ok' => true,
                 'mensaje' => 'Estado actualizado.',
-                'data' => DB::table('solicitudes_viaje')->where('id', $solicitudId)->first(),
+                'data' => $this->tabla('solicitudes_viaje')->where('id', $solicitudId)->first(),
             ];
         });
     }

@@ -38,6 +38,7 @@
         "LOG_CHANNEL": "stderr",
         "SESSION_DRIVER": "cookie",
         "SUPABASE_URL": "https://faerdliihcmygbeyevnt.supabase.co",
-        "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZXJkbGlpaGNteWdiZXlldm50Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTY5MjMsImV4cCI6MjEwNzc3MjkyM30.GLAvwC79A_9VuM943pS3F9v7NcTtO4xqXP5bROGgd9A"
+        "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZXJkbGlpaGNteWdiZXlldm50Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIxOTY5MjMsImV4cCI6MjEwNzc3MjkyM30.GLAvwC79A_9VuM943pS3F9v7NcTtO4xqXP5bROGgd9A",
+        "WHATSAPP_VERIFY_TOKEN": "kaluz2026"
     }
 }
