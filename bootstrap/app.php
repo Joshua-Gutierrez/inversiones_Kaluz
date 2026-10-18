@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/webhook',
             'api/webhook/*',
             'bot/webhook/*',
+            'conductor/*',
             'conductor/api/ofertas/*/aceptar',
         ]);
     })

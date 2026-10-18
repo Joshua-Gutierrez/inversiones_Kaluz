@@ -84,7 +84,7 @@
 
             <ul class="space-y-2 max-h-[380px] overflow-y-auto pr-0.5">
                 @forelse ($conductores as $c)
-                    <li x-show="{{ json_encode(mb_strtolower($c->nombre . ' ' . $c->placa)) }}.includes(busqueda.toLowerCase())">
+                    <li x-show="(@js(mb_strtolower($c->nombre . ' ' . $c->placa))).includes(busqueda.toLowerCase())">
                         <form action="{{ route('despacho.entrar') }}" method="POST">
                             @csrf
                             <input type="hidden" name="conductor_id" value="{{ $c->id }}">

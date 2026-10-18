@@ -24,9 +24,8 @@
 
 @section('content')
 <div
-    x-data="radarConductor('{{ route('despacho.api.solicitudes') }}', '{{ csrf_token() }}')"
+    x-data="radarConductor('{{ route('despacho.api.solicitudes', ['conductor_id' => $conductor->id]) }}', '{{ csrf_token() }}', {{ (int) $conductor->id }})"
     x-init="iniciar()"
-    x-cloak
     class="space-y-4"
     x-on:visibilitychange.window="if (document.hidden) { detener(); } else { iniciar(); }"
 >
@@ -36,7 +35,7 @@
             <h1 class="font-headline font-extrabold text-2xl text-white tracking-tight">Radar de Viajes</h1>
             <p class="text-xs text-slate-400 mt-0.5">Solicitudes de pasajeros en Huancayo en vivo</p>
         </div>
-        <a href="{{ route('despacho.demo.crear-solicitud') }}"
+        <a href="{{ route('despacho.demo.crear-solicitud', ['conductor_id' => $conductor->id]) }}"
            class="shrink-0 inline-flex items-center gap-1.5 bg-[#162647] hover:bg-[#1E325C] text-slate-200 border border-white/15 rounded-xl px-3 py-2 text-xs font-semibold transition"
            title="Simular nueva solicitud de WhatsApp">
             <i class="ri-add-circle-line text-sm text-emerald-400"></i>
@@ -275,7 +274,7 @@
 
 @section('scripts')
 <script>
-    function radarConductor(urlSolicitudes, csrfToken) {
+    function radarConductor(urlSolicitudes, csrfToken, conductorId) {
         return {
             solicitudes: [],
             viajeActivo: {!! json_encode(
@@ -317,9 +316,10 @@
                 try {
                     const url = new URL(urlSolicitudes, window.location.origin);
                     url.searchParams.set('en_linea', this.enLinea ? '1' : '0');
+                    url.searchParams.set('conductor_id', conductorId);
                     const r = await fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
                     if (r.status === 403) {
-                        window.location = '/conductor/bloqueado';
+                        window.location = '/conductor/bloqueado?conductor_id=' + conductorId;
                         return;
                     }
                     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -332,7 +332,7 @@
                     if (json.data.viaje_activo && !this.viajeActivo) {
                         this.viajeActivo = json.data.viaje_activo;
                         this.alertar(2);
-                        setTimeout(() => window.location = '/conductor/viaje', 600);
+                        setTimeout(() => window.location = '/conductor/viaje?conductor_id=' + conductorId, 600);
                         return;
                     }
 
@@ -382,7 +382,7 @@
             async aceptar(s) {
                 this.enviando = s.id;
                 try {
-                    const r = await fetch(`/conductor/api/solicitudes/${s.id}/aceptar`, {
+                    const r = await fetch(`/conductor/api/solicitudes/${s.id}/aceptar?conductor_id=${conductorId}`, {
                         method: 'POST',
                         headers: {
                             'Accept': 'application/json',
@@ -390,11 +390,12 @@
                             'X-CSRF-TOKEN': csrfToken,
                         },
                         credentials: 'same-origin',
+                        body: JSON.stringify({ conductor_id: conductorId }),
                     });
                     const json = await r.json();
                     if (json.ok) {
                         this.alertar(2);
-                        window.location = '/conductor/viaje';
+                        window.location = '/conductor/viaje?conductor_id=' + conductorId;
                         return;
                     }
                     this.aviso = json.mensaje || 'No se pudo aceptar el viaje.';
@@ -418,7 +419,7 @@
                 if (!this.objetivo || this.monto <= 0) return;
                 this.enviando = this.objetivo.id;
                 try {
-                    const r = await fetch(`/conductor/api/solicitudes/${this.objetivo.id}/contraoferta`, {
+                    const r = await fetch(`/conductor/api/solicitudes/${this.objetivo.id}/contraoferta?conductor_id=${conductorId}`, {
                         method: 'POST',
                         headers: {
                             'Accept': 'application/json',
@@ -426,7 +427,7 @@
                             'X-CSRF-TOKEN': csrfToken,
                         },
                         credentials: 'same-origin',
-                        body: JSON.stringify({ monto: this.monto, tiempo_llegada_min: this.tiempo }),
+                        body: JSON.stringify({ monto: this.monto, tiempo_llegada_min: this.tiempo, conductor_id: conductorId }),
                     });
                     const json = await r.json();
                     this.modal = false;

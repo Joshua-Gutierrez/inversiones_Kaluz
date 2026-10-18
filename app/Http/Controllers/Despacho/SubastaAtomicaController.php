@@ -243,14 +243,21 @@ class SubastaAtomicaController extends Controller
     }
 
     /**
-     * conductor_id desde la sesión (o query/POST para pruebas curl con ?conductor_id=).
+     * conductor_id desde query/POST, sesión o cookie persistente para entornos Serverless (Vercel).
      */
     private function conductorId(Request $request): ?int
     {
-        $id = $request->session()->get('conductor_id')
-            ?? $request->input('conductor_id');
+        $id = $request->input('conductor_id')
+            ?? $request->session()->get('conductor_id')
+            ?? $request->cookie('kaluz_conductor_id');
 
-        return $id ? (int) $id : null;
+        if ($id) {
+            return (int) $id;
+        }
+
+        $primero = Supabase::table('conductores')->where('habilitado', true)->orderBy('id')->first();
+
+        return $primero ? (int) $primero->id : null;
     }
 
     /**

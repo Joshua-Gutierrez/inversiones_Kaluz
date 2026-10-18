@@ -496,6 +496,31 @@ Route::get('/general', function () {
     return view('general.index');
 })->name('general.index');
 
+Route::get('/manifest.json', function () {
+    $path = public_path('manifest.json');
+    if (file_exists($path)) {
+        return response(file_get_contents($path), 200)
+            ->header('Content-Type', 'application/manifest+json');
+    }
+
+    return response()->json([
+        'name' => 'Taxi KALUZ Conductor',
+        'short_name' => 'KALUZ',
+        'start_url' => '/conductor/radar',
+        'display' => 'standalone',
+        'background_color' => '#081124',
+        'theme_color' => '#0A1329',
+    ]);
+});
+
+Route::get('/sw.js', function () {
+    $path = public_path('sw.js');
+    $content = file_exists($path) ? file_get_contents($path) : 'self.addEventListener("fetch", () => {});';
+
+    return response($content, 200)
+        ->header('Content-Type', 'application/javascript');
+});
+
 /*
 |--------------------------------------------------------------------------
 | Rutas Modulares por Desarrollador (Cero Conflictos Git)

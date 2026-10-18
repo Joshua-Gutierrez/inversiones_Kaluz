@@ -16,8 +16,12 @@
             "dest": "/public/build/$1"
         },
         {
-            "src": "/(css|js|images|favicon.ico)/(.*)",
+            "src": "/(css|js|images|icons)/(.*)",
             "dest": "/public/$1/$2"
+        },
+        {
+            "src": "/(manifest\\.json|sw\\.js|favicon\\.ico|robots\\.txt)",
+            "dest": "/public/$1"
         },
         {
             "src": "/(.*)",

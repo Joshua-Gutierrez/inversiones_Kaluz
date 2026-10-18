@@ -34,6 +34,21 @@ class ConductorPwaController extends Controller
         return Supabase::table($table);
     }
 
+    private function resolverConductorId(Request $request): ?int
+    {
+        $id = $request->input('conductor_id')
+            ?? $request->session()->get('conductor_id')
+            ?? $request->cookie('kaluz_conductor_id');
+
+        if ($id) {
+            $request->session()->put('conductor_id', (int) $id);
+
+            return (int) $id;
+        }
+
+        return null;
+    }
+
     /**
      * GET /conductor - Pantalla de entrada / selección de conductor (demo, sin auth compleja).
      */
@@ -46,12 +61,12 @@ class ConductorPwaController extends Controller
 
         return view('despacho.seleccion', [
             'conductores' => $conductores,
-            'conductorId' => $request->session()->get('conductor_id'),
+            'conductorId' => $this->resolverConductorId($request),
         ]);
     }
 
     /**
-     * POST /conductor/entrar - Guarda el conductor en sesión y lo manda al radar.
+     * POST /conductor/entrar - Guarda el conductor en sesión/cookie y lo manda al radar.
      * Acepta conductor_id (lista) o telefono_whatsapp (ingreso manual).
      */
     public function entrar(Request $request): RedirectResponse
@@ -67,9 +82,11 @@ class ConductorPwaController extends Controller
         $query = $this->tabla('conductores');
 
         if (! empty($datos['conductor_id'])) {
-            $conductor = $query->where('id', $datos['conductor_id'])->first();
+            $conductor = $query->where('id', (int) $datos['conductor_id'])->first();
         } elseif (! empty($datos['telefono_whatsapp'])) {
-            $conductor = $query->where('telefono_whatsapp', trim($datos['telefono_whatsapp']))->first();
+            $soloDigitos = preg_replace('/\D+/', '', (string) $datos['telefono_whatsapp']);
+            $ultimos9 = strlen($soloDigitos) >= 9 ? substr($soloDigitos, -9) : $soloDigitos;
+            $conductor = $query->where('telefono_whatsapp', 'ilike', "%{$ultimos9}%")->first();
         } else {
             $conductor = null;
         }
@@ -79,12 +96,13 @@ class ConductorPwaController extends Controller
         }
 
         $request->session()->put('conductor_id', (int) $conductor->id);
+        $cookie = cookie('kaluz_conductor_id', (string) $conductor->id, 60 * 24 * 7);
 
         if (! $conductor->habilitado) {
-            return redirect()->route('despacho.pwa.bloqueado');
+            return redirect()->route('despacho.pwa.bloqueado', ['conductor_id' => $conductor->id])->withCookie($cookie);
         }
 
-        return redirect()->route('despacho.pwa');
+        return redirect()->route('despacho.pwa', ['conductor_id' => $conductor->id])->withCookie($cookie);
     }
 
     /**
@@ -92,25 +110,31 @@ class ConductorPwaController extends Controller
      */
     public function radar(Request $request): View|RedirectResponse
     {
-        $conductorId = $request->session()->get('conductor_id');
+        $conductorId = $this->resolverConductorId($request);
 
-        if (! $conductorId) {
-            return redirect()->route('despacho.seleccion');
-        }
+        $conductor = $conductorId
+            ? $this->tabla('conductores')
+                ->where('id', $conductorId)
+                ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'telefono_whatsapp', 'estado_comision', 'habilitado', 'lat_actual', 'lng_actual')
+                ->first()
+            : null;
 
-        $conductor = $this->tabla('conductores')
-            ->where('id', $conductorId)
-            ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'telefono_whatsapp', 'estado_comision', 'habilitado', 'lat_actual', 'lng_actual')
-            ->first();
-
+        // Si entra directo a /conductor/radar sin haber elegido unidad aún, tomar el primer conductor habilitado
         if (! $conductor) {
-            $request->session()->forget('conductor_id');
+            $conductor = $this->tabla('conductores')
+                ->where('habilitado', true)
+                ->orderBy('id')
+                ->first();
 
-            return redirect()->route('despacho.seleccion');
+            if (! $conductor) {
+                return redirect()->route('despacho.seleccion');
+            }
+
+            $request->session()->put('conductor_id', (int) $conductor->id);
         }
 
         if (! $conductor->habilitado) {
-            return redirect()->route('despacho.pwa.bloqueado');
+            return redirect()->route('despacho.pwa.bloqueado', ['conductor_id' => $conductor->id]);
         }
 
         $viajeActivo = app(AtomicAssignmentService::class)
@@ -127,7 +151,7 @@ class ConductorPwaController extends Controller
      */
     public function viaje(Request $request): View|RedirectResponse
     {
-        $conductorId = $request->session()->get('conductor_id');
+        $conductorId = $this->resolverConductorId($request);
 
         if (! $conductorId) {
             return redirect()->route('despacho.seleccion');
@@ -139,14 +163,14 @@ class ConductorPwaController extends Controller
             ->first();
 
         if (! $conductor || ! $conductor->habilitado) {
-            return redirect()->route('despacho.pwa.bloqueado');
+            return redirect()->route('despacho.pwa.bloqueado', ['conductor_id' => $conductorId]);
         }
 
         $viajeActivo = app(AtomicAssignmentService::class)
             ->viajeActivoDe((int) $conductor->id);
 
         if (! $viajeActivo) {
-            return redirect()->route('despacho.pwa');
+            return redirect()->route('despacho.pwa', ['conductor_id' => $conductor->id]);
         }
 
         $geocodificador = app(GeocodingService::class);
@@ -164,10 +188,10 @@ class ConductorPwaController extends Controller
      */
     public function bloqueado(Request $request): View
     {
-        $conductorId = $request->session()->get('conductor_id');
+        $conductorId = $this->resolverConductorId($request);
         $conductor = $conductorId
             ? $this->tabla('conductores')->where('id', $conductorId)->first()
-            : null;
+            : $this->tabla('conductores')->where('habilitado', false)->first();
 
         $motivo = $request->session()->get(
             'motivo_bloqueo',
@@ -185,7 +209,7 @@ class ConductorPwaController extends Controller
      */
     public function cuota(Request $request): View
     {
-        $conductorId = $request->session()->get('conductor_id');
+        $conductorId = $this->resolverConductorId($request);
         $conductor = $conductorId
             ? $this->tabla('conductores')->where('id', $conductorId)->first()
             : $this->tabla('conductores')->orderBy('id')->first();
@@ -200,11 +224,9 @@ class ConductorPwaController extends Controller
      */
     public function pagarCuota(Request $request): RedirectResponse
     {
-        $conductorId = $request->input('conductor_id') ?? $request->session()->get('conductor_id');
+        $conductorId = $this->resolverConductorId($request);
 
         if ($conductorId) {
-            $request->session()->put('conductor_id', (int) $conductorId);
-
             $this->tabla('conductores')->where('id', (int) $conductorId)->update([
                 'habilitado' => true,
                 'estado_comision' => 'al_dia',
@@ -213,7 +235,7 @@ class ConductorPwaController extends Controller
             ]);
         }
 
-        return redirect()->route('despacho.desbloqueado');
+        return redirect()->route('despacho.desbloqueado', ['conductor_id' => $conductorId]);
     }
 
     /**
@@ -221,7 +243,7 @@ class ConductorPwaController extends Controller
      */
     public function desbloqueado(Request $request): View
     {
-        $conductorId = $request->session()->get('conductor_id');
+        $conductorId = $this->resolverConductorId($request);
         $conductor = $conductorId
             ? $this->tabla('conductores')->where('id', $conductorId)->first()
             : $this->tabla('conductores')->where('habilitado', true)->first();
@@ -240,7 +262,7 @@ class ConductorPwaController extends Controller
     {
         $request->session()->forget('conductor_id');
 
-        return redirect()->route('despacho.seleccion');
+        return redirect()->route('despacho.seleccion')->withoutCookie('kaluz_conductor_id');
     }
 
     /**

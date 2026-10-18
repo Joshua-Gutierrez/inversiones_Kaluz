@@ -25,6 +25,15 @@
     <!-- RemixIcon (Iconos reales vectoriales, cero emojis) -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css" rel="stylesheet">
 
+    <script>
+        (function () {
+            const origWarn = console.warn;
+            console.warn = function (...args) {
+                if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+                origWarn.apply(console, args);
+            };
+        })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -56,6 +65,10 @@
 </head>
 @php
     $temaOscuro = trim($__env->yieldContent('tema', 'oscuro')) === 'oscuro';
+    $navConductorId = isset($conductor) && isset($conductor->id)
+        ? $conductor->id
+        : (request()->input('conductor_id') ?? session('conductor_id'));
+    $navParams = $navConductorId ? ['conductor_id' => $navConductorId] : [];
 @endphp
 <body class="{{ $temaOscuro ? 'bg-[#081124] text-white' : 'bg-[#DCE6F2] text-[#0A1329]' }} font-body min-h-screen flex flex-col select-none antialiased">
 
@@ -64,7 +77,7 @@
     @else
         <header class="bg-[#0A1329] border-b border-white/10 px-4 py-3 sticky top-0 z-40">
             <div class="max-w-md mx-auto flex items-center justify-between gap-2">
-                <a href="{{ route('despacho.pwa') }}" class="font-headline font-black text-xl tracking-wider text-white shrink-0">
+                <a href="{{ route('despacho.pwa', $navParams) }}" class="font-headline font-black text-xl tracking-wider text-white shrink-0">
                     KALUZ
                 </a>
 
@@ -87,25 +100,25 @@
     @else
         <nav class="fixed bottom-0 inset-x-0 z-40 bg-[#1B2845]/95 backdrop-blur-md border-t border-white/10">
             <div class="max-w-md mx-auto grid grid-cols-4 text-[11px] font-medium">
-                <a href="{{ route('despacho.pwa') }}"
+                <a href="{{ route('despacho.pwa', $navParams) }}"
                    class="flex flex-col items-center justify-center py-2.5 px-1 transition {{ request()->routeIs('despacho.pwa') || request()->routeIs('despacho.viaje') ? 'bg-[#081124] text-[#E31B23] font-bold' : 'text-slate-300 hover:text-white' }}">
                     <i class="ri-map-2-fill text-xl leading-none mb-1"></i>
                     <span>Radar/Mapa</span>
                 </a>
 
-                <a href="{{ route('despacho.cuota') }}"
+                <a href="{{ route('despacho.cuota', $navParams) }}"
                    class="flex flex-col items-center justify-center py-2.5 px-1 transition {{ request()->routeIs('despacho.cuota') || request()->routeIs('despacho.desbloqueado') ? 'bg-[#081124] text-emerald-400 font-bold' : 'text-slate-300 hover:text-white' }}">
                     <i class="ri-cash-line text-xl leading-none mb-1"></i>
                     <span class="leading-tight text-center">Mis Ingresos<br><span class="text-[9px] opacity-80">(S/ 1.00 diario)</span></span>
                 </a>
 
-                <a href="{{ route('despacho.seleccion') }}"
+                <a href="{{ route('despacho.seleccion', $navParams) }}"
                    class="flex flex-col items-center justify-center py-2.5 px-1 transition {{ request()->routeIs('despacho.seleccion') ? 'bg-[#081124] text-white font-bold' : 'text-slate-300 hover:text-white' }}">
                     <i class="ri-user-3-fill text-xl leading-none mb-1"></i>
                     <span>Mi Cuenta</span>
                 </a>
 
-                <a href="{{ route('despacho.pwa.bloqueado') }}"
+                <a href="{{ route('despacho.pwa.bloqueado', $navParams) }}"
                    class="flex flex-col items-center justify-center py-2.5 px-1 transition {{ request()->routeIs('despacho.pwa.bloqueado') ? 'bg-[#081124] text-[#E31B23] font-bold' : 'text-slate-300 hover:text-white' }}">
                     <i class="ri-notification-3-fill text-xl leading-none mb-1"></i>
                     <span>Alertas</span>
