@@ -21,6 +21,16 @@ Laravel is a web application framework with expressive, elegant syntax. We belie
 
 Laravel is accessible, powerful, and provides tools required for large, robust applications.
 
+## Finanzas (Developer 2)
+
+El padrón consulta registros reales de `conductores` y `pagos_comisiones`; no incluye un modo de demostración con identidades ficticias. La cuota acumula S/ 1 por día calendario desde `conductores.created_at`, se liquida el último día del mes y cuenta únicamente días aprobados de `pagos_comisiones` dentro del mes, usando `fecha_registro` como período. Si quedó impaga, el candado se aplica durante el cierre; al iniciar el siguiente mes se reinicia el cálculo y no se arrastra el saldo. El acceso del conductor y el filtro de flota usan este cálculo actual, no el estado financiero obsoleto de un mes anterior.
+
+Las acciones del panel permiten registrar y editar conductores, revisar pagos Yape, registrar la mora calculada al cierre y anotar alertas visibles en el panel (sin envío por WhatsApp). Para cuotas no se requiere añadir columnas ni modificar las tablas existentes.
+
+Las rutas de Finanzas requieren una sesión de la tabla `usuarios` y que el valor de su columna `usuario` esté en la lista de administradores. Configura `FINANZAS_ADMIN_USERS` en `.env`/el entorno del despliegue con una lista separada por comas; ejemplo: `FINANZAS_ADMIN_USERS=usuario_admin`. La lista se compara sin distinguir mayúsculas. Si está vacía, Finanzas queda cerrada por defecto.
+
+La migración `2026_10_17_000000_create_alertas_financieras_table.php` añade `alertas_financieras` porque el esquema existente no cuenta con una bandeja persistente de alertas. Revisa y aplica las migraciones en el entorno elegido antes de habilitar esa acción; no se ejecutan automáticamente contra Supabase desde este cambio.
+
 ## Learning Laravel
 
 Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.

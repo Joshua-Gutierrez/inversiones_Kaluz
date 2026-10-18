@@ -3,13 +3,15 @@
 namespace App\Http\Controllers\Finanzas;
 
 use App\Http\Controllers\Controller;
+use App\Models\AlertaFinanciera;
 use App\Models\Conductor;
 use App\Models\PagoComision;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -20,12 +22,9 @@ class PadronController extends Controller
 {
     public function index(Request $request): View
     {
-        if ($request->boolean('demo') && app()->environment('local')) {
-            return $this->vistaDemostracion($request);
-        }
-
         $conductores = $this->conductoresFiltrados($request)
             ->with(['pagosComision' => fn ($query) => $query->orderByDesc('fecha_registro')->limit(1)])
+            ->withSum($this->pagosAprobadosDelMes(), 'dias_pagados')
             ->orderBy('nombre')
             ->paginate(20)
             ->withQueryString();
@@ -37,6 +36,7 @@ class PadronController extends Controller
             ->paginate(10, ['*'], 'pagos_page')
             ->withQueryString();
 
+        $alertasHabilitadas = Schema::hasTable('alertas_financieras');
         $total = Conductor::query()->count();
         $habilitados = Conductor::habilitados()->count();
 
@@ -54,119 +54,58 @@ class PadronController extends Controller
                     ->count(),
             ],
             'filtros' => $request->only(['buscar', 'estado']),
-            'modoDemo' => false,
+            'alertas' => $alertasHabilitadas
+                ? AlertaFinanciera::query()->with('conductor')->latest()->limit(8)->get()
+                : collect(),
+            'alertasHabilitadas' => $alertasHabilitadas,
         ]);
     }
 
-    private function vistaDemostracion(Request $request): View
+    public function registrarMora(Conductor $conductor): RedirectResponse
     {
-        $conductoresDemo = collect([
-            ['Habilitado', 'al_dia', 45],
-            ['Habilitado', 'al_dia', 18],
-            ['Habilitado', 'al_dia', 60],
-            ['Habilitado', 'al_dia', 90],
-            ['Habilitado', 'al_dia', 14],
-            ['Moroso', 'moroso', 45],
-            ['Moroso', 'moroso', 20],
-            ['Permiso vencido', 'al_dia', -5],
-        ])->values()->map(function (array $estado, int $indice): Conductor {
-            $hoy = now();
-            $permiso = $hoy->copy()->addDays($estado[2])->toDateString();
-            $vencimientoComision = $estado[1] === 'moroso'
-                ? $hoy->copy()->subDays(2)
-                : $hoy->copy()->addDay();
-            $conductor = new Conductor;
-            $conductor->setRawAttributes([
-                'id' => $indice + 1,
-                'nombre' => 'Conductor Demo '.str_pad((string) ($indice + 1), 2, '0', STR_PAD_LEFT),
-                'dni' => str_pad((string) (70000000 + $indice + 1), 8, '0', STR_PAD_LEFT),
-                'telefono_whatsapp' => '9000000'.str_pad((string) ($indice + 1), 3, '0', STR_PAD_LEFT),
-                'placa' => 'DMO-'.str_pad((string) ($indice + 1), 3, '0', STR_PAD_LEFT),
-                'modelo_vehiculo' => $indice === 6 ? 'Toyota Hiace (combi)' : 'Sedan demo',
-                'tipo_flota' => $indice === 6 ? 'propia_combi' : 'afiliado',
-                'estado_comision' => $estado[1],
-                'fecha_vencimiento_comision' => $vencimientoComision,
-                'fecha_vencimiento_permiso' => $permiso,
-                'habilitado' => $estado[1] === 'al_dia' && $estado[2] >= 0,
-            ], true);
+        if (! $conductor->mora_comision) {
+            throw ValidationException::withMessages([
+                'mora' => 'La comisión se liquida al cierre del mes. Este conductor todavía no tiene una cuota vencida para registrar como mora.',
+            ]);
+        }
 
-            $pagoReciente = new PagoComision;
-            $pagoReciente->setRawAttributes([
-                'id' => $indice + 1,
-                'conductor_id' => $indice + 1,
-                'monto' => '1.00',
-                'dias_pagados' => 1,
-                'metodo_pago' => 'yape',
-                'estado' => $indice === 5 ? 'pendiente' : 'aprobado',
-                'fecha_registro' => $hoy->copy()->subHours($indice + 1),
-                'fecha_aprobacion' => $indice === 5 ? null : $hoy->copy()->subHours($indice + 1),
-            ], true);
-            $pagoReciente->setRelation('conductor', $conductor);
-            $conductor->setRelation('pagosComision', collect([$pagoReciente]));
-
-            return $conductor;
+        DB::transaction(function () use ($conductor): void {
+            $conductor = Conductor::query()->lockForUpdate()->findOrFail($conductor->id);
+            $conductor->forceFill([
+                'estado_comision' => 'moroso',
+                'habilitado' => false,
+            ])->save();
         });
 
-        $habilitado = fn (Conductor $conductor): bool => $conductor->habilitado
-            && $conductor->estado_comision === 'al_dia'
-            && $conductor->fecha_vencimiento_permiso
-            && ! $conductor->fecha_vencimiento_permiso->isBefore(today())
-            && $conductor->fecha_vencimiento_comision?->isFuture();
-        $habilitados = $conductoresDemo->filter($habilitado)->count();
-        $permisosPorVencer = $conductoresDemo->filter(fn (Conductor $conductor): bool => $conductor->fecha_vencimiento_permiso
-            && ! $conductor->fecha_vencimiento_permiso->isBefore(today())
-            && $conductor->fecha_vencimiento_permiso->lte(today()->addDays(30)))->count();
+        return redirect()->route('finanzas.padron')->with(
+            'estado',
+            'Mora registrada. El candado financiero bloquea automáticamente el acceso del conductor.'
+        );
+    }
 
-        $filtrados = $conductoresDemo;
-        if ($request->filled('buscar')) {
-            $termino = mb_strtolower(trim((string) $request->input('buscar')));
-            $filtrados = $filtrados->filter(fn (Conductor $conductor): bool => str_contains(
-                mb_strtolower(implode(' ', [
-                    $conductor->nombre,
-                    $conductor->dni,
-                    $conductor->placa,
-                ])),
-                $termino
-            ));
-        }
-        if ($request->input('estado') === 'habilitado') {
-            $filtrados = $filtrados->filter($habilitado);
-        } elseif ($request->input('estado') === 'bloqueado') {
-            $filtrados = $filtrados->reject($habilitado);
+    public function registrarAlertaCuota(Request $request, Conductor $conductor): RedirectResponse
+    {
+        if (! Schema::hasTable('alertas_financieras')) {
+            throw ValidationException::withMessages([
+                'alerta' => 'El registro de alertas requiere aplicar la migración alertas_financieras antes de usar esta función.',
+            ]);
         }
 
-        $conductores = new LengthAwarePaginator(
-            $filtrados->values(),
-            $filtrados->count(),
-            20,
-            max(1, (int) $request->query('page', 1)),
-            ['path' => route('finanzas.padron'), 'query' => $request->query()]
-        );
-
-        $pagosPendientes = $conductoresDemo
-            ->flatMap(fn (Conductor $conductor) => $conductor->pagosComision)
-            ->where('estado', 'pendiente')
-            ->values();
-        $pagosPendientes = new LengthAwarePaginator(
-            $pagosPendientes,
-            $pagosPendientes->count(),
-            10,
-            max(1, (int) $request->query('pagos_page', 1)),
-            ['path' => route('finanzas.padron'), 'query' => $request->query(), 'pageName' => 'pagos_page']
-        );
-
-        return view('finanzas.padron', [
-            'conductores' => $conductores,
-            'pagosPendientes' => $pagosPendientes,
-            'estadisticas' => [
-                'total' => $conductoresDemo->count(),
-                'habilitados' => $habilitados,
-                'bloqueados' => $conductoresDemo->count() - $habilitados,
-                'permisosPorVencer' => $permisosPorVencer,
-            ],
-            'filtros' => $request->only(['buscar', 'estado']),
-            'modoDemo' => true,
+        $datos = $request->validate([
+            'mensaje' => ['required', 'string', 'max:1000'],
         ]);
+
+        AlertaFinanciera::query()->create([
+            'conductor_id' => $conductor->id,
+            'tipo' => 'cuota_mensual',
+            'mensaje' => $datos['mensaje'],
+            'estado' => 'registrada',
+        ]);
+
+        return redirect()->route('finanzas.padron')->with(
+            'estado',
+            'Alerta registrada en el panel. No se envió ningún mensaje al afiliado.'
+        );
     }
 
     public function store(Request $request): RedirectResponse
@@ -183,14 +122,14 @@ class PadronController extends Controller
 
         Conductor::query()->create([
             ...$datos,
-            'estado_comision' => 'moroso',
-            'fecha_vencimiento_comision' => now(),
-            'habilitado' => false,
+            'estado_comision' => 'al_dia',
+            'fecha_vencimiento_comision' => now()->endOfMonth(),
+            'habilitado' => now()->toDateString() <= $datos['fecha_vencimiento_permiso'],
         ]);
 
         return redirect()->route('finanzas.padron')->with(
             'estado',
-            'Conductor registrado. Permanecerá bloqueado hasta validar el primer pago de comisión.'
+            'Conductor registrado. La cuota de S/ 1 por día calendario se liquida al cierre del mes.'
         );
     }
 
@@ -209,12 +148,12 @@ class PadronController extends Controller
         DB::transaction(function () use ($conductor, $datos): void {
             $conductor = Conductor::query()->lockForUpdate()->findOrFail($conductor->id);
             $permisoVigente = now()->toDateString() <= $datos['fecha_vencimiento_permiso'];
-            $comisionVigente = $conductor->estado_comision === 'al_dia'
-                && $conductor->fecha_vencimiento_comision
-                && $conductor->fecha_vencimiento_comision->isFuture();
+            $comisionVigente = ! $conductor->mora_comision;
 
             $conductor->fill($datos);
+            $conductor->estado_comision = $comisionVigente ? 'al_dia' : 'moroso';
             $conductor->habilitado = $permisoVigente && $comisionVigente;
+            $conductor->fecha_vencimiento_comision = now()->endOfMonth();
             $conductor->save();
         });
 
@@ -224,6 +163,7 @@ class PadronController extends Controller
     public function exportar(Request $request): StreamedResponse
     {
         $conductores = $this->conductoresFiltrados($request)
+            ->withSum($this->pagosAprobadosDelMes(), 'dias_pagados')
             ->orderBy('nombre')
             ->cursor();
 
@@ -244,7 +184,7 @@ class PadronController extends Controller
                     $conductor->modelo_vehiculo,
                     number_format((float) $conductor->deuda_comision, 2, '.', ''),
                     $conductor->fecha_vencimiento_permiso?->format('Y-m-d'),
-                    $conductor->estado_comision,
+                    $conductor->estado_comision_actual,
                 ]);
             }
 
@@ -264,14 +204,15 @@ class PadronController extends Controller
                 });
             })
             ->when($request->input('estado') === 'habilitado', fn (Builder $query) => $query->habilitados())
-            ->when($request->input('estado') === 'bloqueado', function (Builder $query): void {
-                $query->where(function (Builder $query): void {
-                    $query->where('habilitado', false)
-                        ->orWhere('estado_comision', 'moroso')
-                        ->orWhere('fecha_vencimiento_comision', '<', now())
-                        ->orWhereDate('fecha_vencimiento_permiso', '<', now()->toDateString())
-                        ->orWhereNull('fecha_vencimiento_permiso');
-                });
-            });
+            ->when($request->input('estado') === 'bloqueado', fn (Builder $query) => $query->bloqueados());
+    }
+
+    private function pagosAprobadosDelMes(): array
+    {
+        return [
+            'pagosComision as dias_comision_pagados_mes' => fn ($query) => $query
+                ->where('estado', 'aprobado')
+                ->whereBetween('fecha_registro', [today()->startOfMonth(), today()->endOfDay()]),
+        ];
     }
 }

@@ -8,12 +8,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * 👨‍💻 ZONA DEV 2 - Servicio de Validación del Candado Financiero y Documentario (S/ 1.00)
+ * 👨‍💻 ZONA DEV 2 - Validación del candado financiero mensual y documentario.
  */
 class ValidacionCandadoService
 {
     /**
-     * Verifica si un conductor puede recibir viajes o si está bloqueado por deuda de S/ 1.00 o permiso vencido.
+     * La cuota acumula S/ 1 por día calendario y vence al cierre del mes.
      */
     public function verificarEstadoConductor(int $conductorId): array
     {
@@ -30,23 +30,20 @@ class ValidacionCandadoService
         $deuda = $conductor->deuda_comision;
         $permiso = $conductor->fecha_vencimiento_permiso;
 
-        if ($conductor->estado_comision !== 'al_dia' || $deuda > 0) {
+        if ($conductor->mora_comision) {
             return [
                 'habilitado' => false,
-                'motivo' => 'Candado financiero activo: tienes una comisión pendiente de S/ '.number_format($deuda, 2).'.',
+                'motivo' => 'Candado financiero activo: la cuota mensual vencida es de S/ '.number_format($deuda, 2).'.',
                 'deuda' => $deuda,
             ];
         }
 
-        if (! $permiso || $permiso->isBefore(today()) || ! $conductor->fecha_vencimiento_comision
-            || $conductor->fecha_vencimiento_comision->isPast() || ! $conductor->habilitado) {
+        if (! $permiso || $permiso->isBefore(today())) {
             return [
                 'habilitado' => false,
-                'motivo' => ! $permiso || $permiso->isBefore(today())
-                    ? ($permiso
-                        ? 'Candado documentario: tu permiso o SOAT venció el '.$permiso->format('d/m/Y').'.'
-                        : 'Candado documentario: registra la fecha vigente de tu permiso municipal o SOAT.')
-                    : 'Candado financiero activo: tu comisión diaria está vencida o pendiente de validación.',
+                'motivo' => ! $permiso
+                    ? 'Candado documentario: registra la fecha vigente de tu permiso municipal o SOAT.'
+                    : 'Candado documentario: tu permiso o SOAT venció el '.$permiso->format('d/m/Y').'.',
                 'deuda' => $deuda,
             ];
         }
@@ -63,33 +60,44 @@ class ValidacionCandadoService
             }
 
             $conductor = Conductor::query()->lockForUpdate()->findOrFail($pago->conductor_id);
-            $diasPagados = max(1, (int) $pago->dias_pagados);
-            if ((float) $pago->monto < $diasPagados) {
+            $fechaPago = $pago->fecha_registro ?? now();
+            $diasPagados = (int) $pago->dias_pagados;
+            if ($diasPagados < 1 || (int) round((float) $pago->monto * 100) !== $diasPagados * 100) {
                 throw ValidationException::withMessages([
-                    'pago' => 'El monto del comprobante no cubre los días de comisión declarados.',
+                    'pago' => 'El monto debe coincidir exactamente con los días calendario declarados a razón de S/ 1 por día.',
                 ]);
             }
-            $deudaRestante = max(0, $conductor->deuda_comision - $diasPagados);
+
+            $periodoInicio = $fechaPago->copy()->startOfMonth();
+            $periodoFin = $fechaPago->copy()->endOfMonth()->endOfDay();
+            $diasYaPagados = (int) PagoComision::query()
+                ->where('conductor_id', $conductor->id)
+                ->where('estado', 'aprobado')
+                ->whereBetween('fecha_registro', [$periodoInicio, $periodoFin])
+                ->sum('dias_pagados');
+            $diasAcumuladosHastaPago = $conductor->diasComisionAcumulados($fechaPago);
+
+            if ($diasYaPagados + $diasPagados > $diasAcumuladosHastaPago) {
+                throw ValidationException::withMessages([
+                    'pago' => 'Los días pagados superan la comisión calendario acumulada del conductor en este mes.',
+                ]);
+            }
 
             $pago->estado = 'aprobado';
             $pago->fecha_aprobacion = now();
             $pago->save();
 
-            $fechaBase = $conductor->fecha_vencimiento_comision;
-            $fechaBase = $deudaRestante === 0 || ! $fechaBase ? now() : $fechaBase;
-            $permisoVigente = $conductor->fecha_vencimiento_permiso
-                && ! $conductor->fecha_vencimiento_permiso->isBefore(today());
-            $fechaVencimiento = $fechaBase->copy()->addDays($diasPagados);
-            $estadoComision = $deudaRestante === 0 ? 'al_dia' : 'moroso';
-            $habilitado = $deudaRestante === 0
-                && $permisoVigente
-                && $fechaVencimiento->isFuture();
+            if ($periodoInicio->isSameMonth(now())) {
+                $permisoVigente = $conductor->fecha_vencimiento_permiso
+                    && ! $conductor->fecha_vencimiento_permiso->isBefore(today());
+                $mora = $conductor->mora_comision;
 
-            $conductor->forceFill([
-                'fecha_vencimiento_comision' => $fechaVencimiento,
-                'estado_comision' => $estadoComision,
-                'habilitado' => $habilitado,
-            ])->save();
+                $conductor->forceFill([
+                    'fecha_vencimiento_comision' => now()->endOfMonth(),
+                    'estado_comision' => $mora ? 'moroso' : 'al_dia',
+                    'habilitado' => $permisoVigente && ! $mora,
+                ])->save();
+            }
 
             return true;
         });

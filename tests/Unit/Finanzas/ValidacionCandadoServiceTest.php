@@ -6,7 +6,7 @@ use App\Models\Conductor;
 use App\Models\PagoComision;
 use App\Services\Finanzas\ValidacionCandadoService;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -45,19 +45,39 @@ class ValidacionCandadoServiceTest extends TestCase
             $table->timestamp('fecha_registro')->nullable();
             $table->timestamp('fecha_aprobacion')->nullable();
         });
+
+        Schema::create('alertas_financieras', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('conductor_id')->constrained('conductores')->cascadeOnDelete();
+            $table->string('tipo', 30);
+            $table->text('mensaje');
+            $table->string('estado', 20)->default('registrada');
+            $table->timestamps();
+        });
+
+        config(['finanzas.admin_users' => ['kaluz-admin']]);
+        $this->withSession(['usuario' => 'kaluz-admin']);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     public function test_approving_a_pending_payment_reduces_debt_and_unlocks_an_eligible_driver(): void
     {
+        Carbon::setTestNow(now()->endOfMonth()->setTime(12, 0));
         $conductor = $this->conductor([
             'estado_comision' => 'moroso',
             'fecha_vencimiento_comision' => now()->subDay(),
             'habilitado' => false,
         ]);
+        $conductor->forceFill(['created_at' => today()->startOfMonth()])->save();
         $pago = PagoComision::query()->create([
             'conductor_id' => $conductor->id,
-            'monto' => 1.00,
-            'dias_pagados' => 1,
+            'monto' => today()->daysInMonth,
+            'dias_pagados' => today()->daysInMonth,
             'metodo_pago' => 'yape',
             'estado' => 'pendiente',
         ]);
@@ -97,6 +117,7 @@ class ValidacionCandadoServiceTest extends TestCase
 
     public function test_payment_amount_must_cover_the_days_claimed(): void
     {
+        Carbon::setTestNow(now()->endOfMonth()->setTime(12, 0));
         $conductor = $this->conductor([
             'estado_comision' => 'moroso',
             'fecha_vencimiento_comision' => now()->subDay(),
@@ -147,45 +168,39 @@ class ValidacionCandadoServiceTest extends TestCase
             ->assertDontSee('Juan Pérez Huamán');
     }
 
-    public function test_demo_mode_shows_only_synthetic_read_only_records(): void
+    public function test_admin_edit_form_opens_as_a_dialog(): void
     {
-        $this->app['env'] = 'local';
-        DB::enableQueryLog();
-        DB::flushQueryLog();
+        $this->conductor();
 
-        $this->get(route('finanzas.padron', ['demo' => 1]))
+        $this->get(route('finanzas.padron'))
             ->assertOk()
-            ->assertSee('Vista de demostración')
-            ->assertSee('Conductor Demo 01')
-            ->assertSee('Conductor Demo 08')
-            ->assertSee('Flota y afiliados')
-            ->assertSee('Estado financiero')
-            ->assertSee('Solo lectura')
-            ->assertDontSee('Registrar socio o unidad propia')
-            ->assertDontSee('Guardar cambios')
-            ->assertDontSee('Aprobar')
-            ->assertDontSee('Rechazar')
-            ->assertDontSee('Exportar CSV')
-            ->assertSee('name="demo" value="1"', false)
-            ->assertSee('demo=1', false);
+            ->assertSee('data-dialog-open="editar-conductor-', false)
+            ->assertSee('<dialog id="editar-conductor-', false)
+            ->assertSee('Editar conductor')
+            ->assertSee('Guardar cambios');
 
-        $this->get(route('finanzas.padron', ['demo' => 1, 'estado' => 'habilitado']))
-            ->assertOk()
-            ->assertSee('Conductor Demo 01')
-            ->assertDontSee('Conductor Demo 07')
-            ->assertSee('Vista de demostración');
-
-        self::assertSame([], DB::getQueryLog(), 'La vista de demostración no debe consultar la base de datos.');
     }
 
-    public function test_demo_query_parameter_is_ignored_outside_local_environment(): void
+    public function test_padron_uses_database_records_even_when_demo_query_parameter_is_present(): void
     {
-        $this->app['env'] = 'production';
-
         $this->get(route('finanzas.padron', ['demo' => 1]))
             ->assertOk()
             ->assertDontSee('Vista de demostración')
-            ->assertDontSee('Conductor Demo 01');
+            ->assertDontSee('Conductor Demo')
+            ->assertSee('Flota y afiliados')
+            ->assertSee('Estado financiero')
+            ->assertSee('Añadir conductor')
+            ->assertSee('Bandeja de validación Yape');
+    }
+
+    public function test_finance_routes_require_an_admin_session(): void
+    {
+        $this->flushSession();
+        $this->get(route('finanzas.padron'))->assertRedirect(route('login'));
+
+        $this->withSession(['usuario' => 'conductor'])
+            ->get(route('finanzas.padron'))
+            ->assertForbidden();
     }
 
     public function test_driver_id_in_query_string_cannot_bypass_the_financial_lock(): void
@@ -209,8 +224,82 @@ class ValidacionCandadoServiceTest extends TestCase
         ])->assertRedirect(route('finanzas.padron'));
 
         $conductor = Conductor::query()->where('dni', '12345678')->firstOrFail();
-        self::assertSame('moroso', $conductor->estado_comision);
-        self::assertFalse($conductor->habilitado);
+        self::assertSame('al_dia', $conductor->estado_comision);
+        self::assertTrue($conductor->habilitado);
+    }
+
+    public function test_monthly_fee_is_calculated_from_registration_and_does_not_carry_forward(): void
+    {
+        $inicioMes = now()->startOfMonth()->startOfDay();
+        Carbon::setTestNow($inicioMes->copy()->addDays(9)->setTime(12, 0));
+        $conductor = $this->conductor([
+            'estado_comision' => 'moroso',
+            'habilitado' => false,
+            'fecha_vencimiento_permiso' => today()->addYear(),
+        ]);
+        $conductor->forceFill(['created_at' => $inicioMes])->save();
+
+        self::assertSame(10.0, $conductor->deuda_comision);
+        self::assertFalse($conductor->mora_comision);
+        self::assertTrue(app(ValidacionCandadoService::class)->verificarEstadoConductor($conductor->id)['habilitado']);
+        self::assertTrue(Conductor::habilitados()->whereKey($conductor->id)->exists());
+
+        Carbon::setTestNow(now()->endOfMonth()->setTime(12, 0));
+        $conductor->refresh();
+
+        self::assertSame((float) today()->daysInMonth, $conductor->deuda_comision);
+        self::assertTrue($conductor->mora_comision);
+        self::assertFalse(app(ValidacionCandadoService::class)->verificarEstadoConductor($conductor->id)['habilitado']);
+        self::assertFalse(Conductor::habilitados()->whereKey($conductor->id)->exists());
+
+        Carbon::setTestNow(now()->addDay()->startOfDay());
+        $conductor->refresh();
+        self::assertSame(1.0, $conductor->deuda_comision);
+        self::assertFalse($conductor->mora_comision);
+        self::assertTrue(app(ValidacionCandadoService::class)->verificarEstadoConductor($conductor->id)['habilitado']);
+        self::assertTrue(Conductor::habilitados()->whereKey($conductor->id)->exists());
+    }
+
+    public function test_admin_can_register_mora_only_after_month_end_due_date(): void
+    {
+        Carbon::setTestNow(now()->endOfMonth()->setTime(12, 0));
+        $conductor = $this->conductor();
+        $conductor->forceFill(['created_at' => today()->startOfMonth()])->save();
+
+        $this->post(route('finanzas.padron.conductores.mora', $conductor))
+            ->assertRedirect(route('finanzas.padron'))
+            ->assertSessionHas('estado');
+
+        self::assertSame('moroso', $conductor->fresh()->estado_comision);
+        self::assertFalse($conductor->fresh()->habilitado);
+        self::assertFalse(app(ValidacionCandadoService::class)->verificarEstadoConductor($conductor->id)['habilitado']);
+    }
+
+    public function test_admin_can_register_a_quota_alert_without_sending_a_message(): void
+    {
+        $conductor = $this->conductor();
+
+        $this->post(route('finanzas.padron.conductores.alerta-cuota', $conductor), [
+            'mensaje' => 'Recordatorio de cuota.',
+        ])->assertRedirect(route('finanzas.padron'))
+            ->assertSessionHas('estado', 'Alerta registrada en el panel. No se envió ningún mensaje al afiliado.');
+
+        $this->assertDatabaseHas('alertas_financieras', [
+            'conductor_id' => $conductor->id,
+            'tipo' => 'cuota_mensual',
+            'mensaje' => 'Recordatorio de cuota.',
+        ]);
+    }
+
+    public function test_alert_action_is_visible_but_explains_when_its_table_is_not_migrated(): void
+    {
+        $this->conductor();
+        Schema::drop('alertas_financieras');
+
+        $this->get(route('finanzas.padron'))
+            ->assertOk()
+            ->assertSee('Requiere migración de alertas')
+            ->assertSee('alertas_financieras');
     }
 
     public function test_updating_an_expired_permit_immediately_relocks_the_driver(): void
