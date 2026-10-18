@@ -170,6 +170,23 @@ class WhatsAppController extends Controller
                 ], 200);
             }
 
+            // Si un pasajero envía su UBICACIÓN para pedir un taxi
+            if ($tipo === 'location') {
+                $latPasajero = (float) data_get($message, 'location.latitude', 0);
+                $lonPasajero = (float) data_get($message, 'location.longitude', 0);
+
+                $this->enviarMensajeWhatsApp(
+                    $remitente,
+                    '📍 Ubicación recibida. Buscando conductores a menos de 2km...'
+                );
+
+                return response()->json([
+                    'status' => 'LOCATION_RECEIVED',
+                    'latitude' => $latPasajero,
+                    'longitude' => $lonPasajero,
+                ], 200);
+            }
+
             // Si envía texto u otro tipo de mensaje, responder con guía rápida
             if ($tipo === 'text') {
                 $cuerpoTexto = trim((string) data_get($message, 'text.body', ''));
@@ -198,6 +215,25 @@ class WhatsAppController extends Controller
                 @unlink($tempFilePath);
             }
         }
+    }
+
+    /**
+     * Calcula la distancia en kilómetros entre el pasajero y un chofer usando la Fórmula de Haversine.
+     */
+    public function calcularDistanciaHaversine(float $latPasajero, float $lonPasajero, float $latChofer, float $lonChofer): float
+    {
+        $radioTierraKm = 6371.0;
+
+        $dLat = deg2rad($latChofer - $latPasajero);
+        $dLon = deg2rad($lonChofer - $lonPasajero);
+
+        $a = sin($dLat / 2) * sin($dLat / 2)
+            + cos(deg2rad($latPasajero)) * cos(deg2rad($latChofer))
+            * sin($dLon / 2) * sin($dLon / 2);
+
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return round($radioTierraKm * $c, 2);
     }
 
     /**

@@ -24,6 +24,27 @@ Route::get('/webhook', function (Request $request) {
     return response('Forbidden', 403);
 });
 
+if (! function_exists('calcularDistanciaHaversine')) {
+    /**
+     * Calcula la distancia en kilómetros entre dos coordenadas GPS usando la Fórmula de Haversine.
+     */
+    function calcularDistanciaHaversine(float $latPasajero, float $lonPasajero, float $latChofer, float $lonChofer): float
+    {
+        $radioTierraKm = 6371.0;
+
+        $dLat = deg2rad($latChofer - $latPasajero);
+        $dLon = deg2rad($lonChofer - $lonPasajero);
+
+        $a = sin($dLat / 2) * sin($dLat / 2)
+            + cos(deg2rad($latPasajero)) * cos(deg2rad($latChofer))
+            * sin($dLon / 2) * sin($dLon / 2);
+
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+
+        return round($radioTierraKm * $c, 2);
+    }
+}
+
 Route::post('/webhook', function (Request $request) {
     try {
         $body = $request->all();
@@ -92,6 +113,69 @@ Route::post('/webhook', function (Request $request) {
                             ],
                         ]);
                 }
+            }
+        } elseif (is_array($mensaje) && ($mensaje['type'] ?? '') === 'location') {
+            $remitente = (string) ($mensaje['from'] ?? '');
+            $latPasajero = (float) data_get($mensaje, 'location.latitude', 0);
+            $lonPasajero = (float) data_get($mensaje, 'location.longitude', 0);
+            $bearerToken = (string) env('META_WA_BEARER_TOKEN');
+            $phoneId = (string) env('META_WA_PHONE_NUMBER_ID');
+
+            /*
+             * =========================================================================
+             * LÓGICA DE EMPAREJAMIENTO GEOESPACIAL CON SUPABASE (RADIO < 2.0 KM)
+             * =========================================================================
+             * 1. Consultar a Supabase todos los choferes con estado = 'habilitado':
+             *    $choferesResponse = Http::withHeaders([
+             *        'apikey' => env('SUPABASE_KEY'),
+             *        'Authorization' => 'Bearer ' . env('SUPABASE_KEY'),
+             *    ])->get(env('SUPABASE_URL') . '/rest/v1/conductores', [
+             *        'estado' => 'eq.habilitado',
+             *        'select' => 'id,nombre,telefono_whatsapp,lat_actual,lng_actual',
+             *    ]);
+             *
+             * 2. Iterar sobre los choferes habilitados y filtrar usando Haversine (< 2.0 km):
+             *    $choferesCercanos = [];
+             *    foreach ($choferesResponse->json() ?? [] as $chofer) {
+             *        $distanciaKm = calcularDistanciaHaversine(
+             *            $latPasajero,
+             *            $lonPasajero,
+             *            (float) $chofer['lat_actual'],
+             *            (float) $chofer['lng_actual']
+             *        );
+             *
+             *        if ($distanciaKm < 2.0) {
+             *            $chofer['distancia_km'] = $distanciaKm;
+             *            $choferesCercanos[] = $chofer;
+             *        }
+             *    }
+             *
+             * 3. Registrar la solicitud de viaje en Supabase asociada al pasajero y choferes cercanos:
+             *    Http::withHeaders([
+             *        'apikey' => env('SUPABASE_KEY'),
+             *        'Authorization' => 'Bearer ' . env('SUPABASE_KEY'),
+             *        'Content-Type' => 'application/json',
+             *    ])->post(env('SUPABASE_URL') . '/rest/v1/solicitudes_viaje', [
+             *        'cliente_telefono' => $remitente,
+             *        'origen_lat' => $latPasajero,
+             *        'origen_lng' => $lonPasajero,
+             *        'estado' => 'pendiente',
+             *        'choferes_notificados' => array_column($choferesCercanos, 'id'),
+             *    ]);
+             */
+
+            // 4. Confirmar recepción de ubicación al pasajero por WhatsApp Cloud API
+            if ($remitente !== '') {
+                Http::withoutVerifying()
+                    ->withToken($bearerToken)
+                    ->post("https://graph.facebook.com/v20.0/{$phoneId}/messages", [
+                        'messaging_product' => 'whatsapp',
+                        'to' => $remitente,
+                        'type' => 'text',
+                        'text' => [
+                            'body' => '📍 Ubicación recibida. Buscando conductores a menos de 2km...',
+                        ],
+                    ]);
             }
         }
     } catch (Throwable $e) {
