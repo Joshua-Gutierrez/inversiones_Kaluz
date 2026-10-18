@@ -13,6 +13,23 @@
             );
         @endphp
 
+        @if ($modoDemo)
+            <div role="status" class="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+                <p><strong>Vista de demostración:</strong> son registros ficticios de solo lectura; no se guardan en Supabase.</p>
+                <a href="{{ route('finanzas.padron') }}"
+                    class="inline-flex min-h-10 items-center justify-center rounded-lg border border-amber-400 bg-white px-4 font-bold text-amber-900 hover:bg-amber-100">
+                    Volver al padrón real
+                </a>
+            </div>
+        @elseif (app()->environment('local'))
+            <div class="flex justify-end">
+                <a href="{{ route('finanzas.padron', ['demo' => 1]) }}"
+                    class="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-[#0B1B3D] shadow-sm transition hover:bg-slate-50">
+                    Ver datos de demostración
+                </a>
+            </div>
+        @endif
+
         @if (session('estado'))
             <div role="status" class="rounded-xl border border-emerald-300 bg-emerald-100 px-4 py-3 text-sm font-semibold text-emerald-800">
                 {{ session('estado') }}
@@ -43,6 +60,7 @@
             </x-tarjeta-kaluz>
         </div>
 
+        @unless ($modoDemo)
         <x-tarjeta-kaluz titulo="Registrar conductor" subtitulo="El nuevo registro inicia bloqueado hasta aprobar su primer pago diario.">
             <details>
                 <summary class="inline-flex cursor-pointer items-center rounded-xl bg-[#E31B23] px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-700">
@@ -97,6 +115,7 @@
                 </form>
             </details>
         </x-tarjeta-kaluz>
+        @endunless
 
         <x-tarjeta-kaluz titulo="Padrón General" subtitulo="Busca conductores y revisa su estado financiero y documentario.">
             <div class="mb-6 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 md:p-5">
@@ -165,6 +184,9 @@
                     </nav>
                 </div>
             </div>
+            @if ($modoDemo)
+                <p class="mb-4 text-xs text-slate-500">Datos inventados para probar búsqueda, filtros, semáforo y paginación. Los formularios de escritura están desactivados.</p>
+            @endif
 
             <div class="overflow-x-auto">
                 <table class="w-full border-collapse text-left text-sm">
@@ -232,6 +254,9 @@
                                     @endif
                                 </td>
                                 <td class="px-4 py-3">
+                                    @if ($modoDemo)
+                                        <span class="text-xs font-semibold text-slate-400">Solo lectura</span>
+                                    @else
                                     <details class="min-w-48">
                                         <summary class="cursor-pointer font-semibold text-[#0B1B3D] underline decoration-[#E31B23] underline-offset-2">
                                             Editar datos
@@ -284,6 +309,7 @@
                                             </button>
                                         </form>
                                     </details>
+                                    @endif
                                 </td>
                             </tr>
                         @empty
@@ -338,6 +364,9 @@
                                     </td>
                                     <td class="px-4 py-3 text-slate-600">{{ $pago->fecha_registro?->format('d/m/Y H:i') ?? '—' }}</td>
                                     <td class="px-4 py-3">
+                                        @if ($modoDemo)
+                                            <span class="text-xs font-semibold text-slate-400">Solo lectura</span>
+                                        @else
                                         <div class="flex justify-end gap-2">
                                             <form method="POST" action="{{ route('finanzas.yape.validar', $pago) }}">
                                                 @csrf
@@ -354,6 +383,7 @@
                                                 </button>
                                             </form>
                                         </div>
+                                        @endif
                                     </td>
                                 </tr>
                             @endforeach

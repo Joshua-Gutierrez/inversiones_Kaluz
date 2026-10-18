@@ -6,6 +6,7 @@ use App\Models\Conductor;
 use App\Models\PagoComision;
 use App\Services\Finanzas\ValidacionCandadoService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -144,6 +145,36 @@ class ValidacionCandadoServiceTest extends TestCase
             ->assertSee('Ana Conductora')
             ->assertDontSee('Bruno Conductor')
             ->assertDontSee('Juan Pérez Huamán');
+    }
+
+    public function test_demo_mode_shows_only_synthetic_read_only_records(): void
+    {
+        $this->app['env'] = 'local';
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+
+        $this->get(route('finanzas.padron', ['demo' => 1]))
+            ->assertOk()
+            ->assertSee('Vista de demostración')
+            ->assertSee('Conductor Demo 01')
+            ->assertSee('Conductor Demo 08')
+            ->assertSee('Solo lectura')
+            ->assertDontSee('Registrar socio o unidad propia')
+            ->assertDontSee('Guardar cambios')
+            ->assertDontSee('Aprobar')
+            ->assertDontSee('Rechazar');
+
+        self::assertSame([], DB::getQueryLog(), 'La vista de demostración no debe consultar la base de datos.');
+    }
+
+    public function test_demo_query_parameter_is_ignored_outside_local_environment(): void
+    {
+        $this->app['env'] = 'production';
+
+        $this->get(route('finanzas.padron', ['demo' => 1]))
+            ->assertOk()
+            ->assertDontSee('Vista de demostración')
+            ->assertDontSee('Conductor Demo 01');
     }
 
     public function test_driver_id_in_query_string_cannot_bypass_the_financial_lock(): void
