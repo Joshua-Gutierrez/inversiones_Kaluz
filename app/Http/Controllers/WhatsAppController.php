@@ -554,6 +554,25 @@ class WhatsAppController extends Controller
                     return response('EVENT_RECEIVED', 200);
                 }
 
+                // Soporte para reiniciar / cancelar
+                if (preg_match('/^(?:cancelar|anular|salir|reiniciar|reset)\b/iu', $cuerpoTexto)) {
+                    Supabase::table('solicitudes_viaje')
+                        ->where('cliente_telefono', $remitente)
+                        ->whereIn('estado', ['pendiente', 'en_subasta'])
+                        ->update([
+                            'estado' => 'cancelado',
+                            'updated_at' => now()->toIso8601String(),
+                        ]);
+
+                    $this->enviarMensajeWhatsApp(
+                        $remitente,
+                        "🚫 *Solicitud cancelada.*\n\n".
+                        "Puedes iniciar un nuevo viaje en cualquier momento escribiendo *Hola* o tu ruta completa (Ejemplo: *De Continental a Real Plaza*)."
+                    );
+
+                    return response('EVENT_RECEIVED', 200);
+                }
+
                 // FLUJO 1 - Paso 2A (Conversacional): Si hay un borrador pendiente donde falta origen o destino
                 $solicitudBorrador = Supabase::table('solicitudes_viaje')
                     ->where('cliente_telefono', $remitente)
@@ -565,7 +584,7 @@ class WhatsAppController extends Controller
                     // Si falta el Origen (el usuario acaba de enviar 1 o pedir taxi y responde con su punto de partida)
                     if ($solicitudBorrador->origen_texto === 'POR_DEFINIR') {
                         $origenLimpio = ucfirst(trim(preg_replace('/^(?:desde\s*:?\s*|estoy\s+en\s+|en\s+|de\s+|punto\s*:?\s*)/iu', '', $cuerpoTexto), " ,.:\n\r"));
-                        if ($origenLimpio !== '') {
+                        if (mb_strlen($origenLimpio) >= 2 && ! preg_match('/^(?:hola|buenas|buenos|taxi|si|no|ok)\b/iu', $origenLimpio)) {
                             $geocoder = app(GeocodingService::class);
                             $coordOrigen = $geocoder->coordenadas($origenLimpio);
 
@@ -590,7 +609,7 @@ class WhatsAppController extends Controller
                     // Si falta el Destino (ya tenemos el origen y ahora el usuario indica hacia dónde va)
                     if ($solicitudBorrador->origen_texto !== 'POR_DEFINIR' && $solicitudBorrador->destino_texto === 'POR_DEFINIR') {
                         $destinoLimpio = ucfirst(trim(preg_replace('/^(?:a\s*:?\s*|hacia\s+|hasta\s+|para\s+|voy\s+a\s+|destino\s*:?\s*)/iu', '', $cuerpoTexto), " ,.:\n\r"));
-                        if ($destinoLimpio !== '') {
+                        if (mb_strlen($destinoLimpio) >= 2 && ! preg_match('/^(?:hola|buenas|buenos|taxi|si|no|ok)\b/iu', $destinoLimpio)) {
                             $geocoder = app(GeocodingService::class);
                             $coordDestino = $geocoder->coordenadas($destinoLimpio);
                             $precioSugerido = $geocoder->precioSugerido(
@@ -624,6 +643,20 @@ class WhatsAppController extends Controller
 
                             return response('EVENT_RECEIVED', 200);
                         }
+                    }
+
+                    // Si origen y destino ya están definidos y el usuario escribió algo que no fue un monto numérico
+                    if ($solicitudBorrador->origen_texto !== 'POR_DEFINIR' && $solicitudBorrador->destino_texto !== 'POR_DEFINIR') {
+                        $sugeridoFmt = number_format((float) ($solicitudBorrador->precio_sugerido ?? 6.00), 2, '.', '');
+                        $this->enviarMensajeWhatsApp(
+                            $remitente,
+                            "💰 *Tu ruta actual:* {$solicitudBorrador->origen_texto} ➔ {$solicitudBorrador->destino_texto}\n".
+                            "💡 *Tarifa sugerida:* S/ {$sugeridoFmt}\n\n".
+                            "Por favor, responde con el monto en soles que ofreces (Ejemplo: *6* o *7*).\n\n".
+                            "_(Si deseas reiniciar y pedir otra ruta, escribe *Cancelar*)_"
+                        );
+
+                        return response('EVENT_RECEIVED', 200);
                     }
                 }
 
