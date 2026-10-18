@@ -30,28 +30,11 @@
             @endif
         </div>
 
-        {{-- Código QR Vectorial Real con emblema central --}}
-        <div class="relative w-44 h-44 mx-auto bg-white p-2.5 rounded-2xl border-2 border-slate-200 shadow-xs flex items-center justify-center">
-            <svg viewBox="0 0 29 29" class="w-full h-full text-[#0A1329]" fill="currentColor" shape-rendering="crispEdges">
-                <!-- Patrón QR real -->
-                <path d="M0,0 h7 v7 h-7 z M1,1 v5 h5 v-5 z M2,2 h3 v3 h-3 z
-                         M22,0 h7 v7 h-7 z M23,1 v5 h5 v-5 z M24,2 h3 v3 h-3 z
-                         M0,22 h7 v7 h-7 z M1,23 v5 h5 v-5 z M2,24 h3 v3 h-3 z
-                         M9,0 h2 v2 h-2 z M13,0 h1 v3 h-1 z M16,0 h3 v1 h-3 z M20,1 h1 v2 h-1 z
-                         M8,3 h3 v1 h-3 z M12,4 h2 v2 h-2 z M15,3 h2 v2 h-2 z M19,4 h2 v1 h-2 z
-                         M9,6 h1 v2 h-1 z M11,6 h2 v1 h-2 z M16,6 h4 v1 h-4 z
-                         M0,9 h2 v2 h-2 z M4,8 h3 v1 h-3 z M8,9 h2 v3 h-2 z M18,9 h3 v2 h-3 z M23,9 h2 v1 h-2 z M27,8 h2 v3 h-2 z
-                         M1,12 h3 v2 h-3 z M6,11 h2 v2 h-2 z M21,12 h3 v1 h-3 z M25,11 h2 v3 h-2 z
-                         M0,16 h2 v3 h-2 z M3,15 h3 v2 h-3 z M7,16 h2 v2 h-2 z M20,16 h2 v2 h-2 z M24,16 h3 v2 h-3 z M28,15 h1 v4 h-1 z
-                         M2,20 h4 v1 h-4 z M8,19 h3 v2 h-3 z M18,19 h2 v3 h-2 z M22,20 h3 v2 h-3 z
-                         M9,23 h2 v2 h-2 z M12,22 h3 v1 h-3 z M16,23 h2 v3 h-2 z M20,23 h2 v2 h-2 z M24,23 h4 v1 h-4 z
-                         M8,26 h3 v3 h-3 z M13,25 h2 v4 h-2 z M19,27 h3 v2 h-3 z M23,26 h2 v3 h-2 z M27,25 h2 v4 h-2 z"/>
-            </svg>
-            <div class="absolute inset-0 flex items-center justify-center">
-                <div class="w-10 h-10 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-[#0A1329]">
-                    <i class="ri-whatsapp-fill text-2xl"></i>
-                </div>
-            </div>
+        {{-- Código QR Oficial Yape --}}
+        <div class="relative w-48 h-48 mx-auto bg-white p-2 rounded-2xl border-2 border-slate-200 shadow-sm flex items-center justify-center overflow-hidden">
+            <img src="{{ asset('images/qr-yape.png') }}"
+                 alt="Código QR Oficial Yape - Inversiones Kaluz"
+                 class="w-full h-full object-contain rounded-xl">
         </div>
 
         {{-- Número de Yape con botón de copiado --}}

@@ -190,12 +190,14 @@
                 </div>
                 <p class="font-headline font-bold text-sm text-white">Radar activo esperando pasajeros</p>
                 <p class="text-xs text-slate-400">Cuando un pasajero pida taxi por WhatsApp en Huancayo aparecerá aquí al instante.</p>
-                <div class="pt-2">
-                    <a href="{{ route('despacho.demo.crear-solicitud', ['conductor_id' => $conductor->id]) }}"
-                       class="inline-flex items-center gap-1.5 bg-[#E31B23] hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow">
-                        <i class="ri-whatsapp-line text-sm"></i>
-                        <span>Simular pedido de WhatsApp</span>
-                    </a>
+                <div class="pt-2 flex items-center justify-center">
+                    <span class="inline-flex items-center gap-2 bg-[#162647] border border-emerald-500/30 text-emerald-300 text-xs font-semibold px-4 py-2 rounded-full shadow-inner">
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        <span>Esperando viajes en tiempo real...</span>
+                    </span>
                 </div>
             </div>
 
