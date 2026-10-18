@@ -33,6 +33,20 @@ class AtomicAssignmentService
         'en_ruta' => ['completado', 'cancelado'],
     ];
 
+    private function tabla(string $table)
+    {
+        if (extension_loaded('pdo_pgsql')) {
+            try {
+                DB::connection()->getPdo();
+                return DB::table($table);
+            } catch (\Throwable) {
+                // Fallback to Supabase REST
+            }
+        }
+
+        return \App\Services\Supabase\Supabase::table($table);
+    }
+
     /**
      * Lista de solicitudes disponibles (pendiente / en_subasta y sin conductor) para un conductor.
      *
@@ -45,7 +59,7 @@ class AtomicAssignmentService
      */
     public function solicitudesDisponibles(Conductor $c)
     {
-        $conductor = DB::table('conductores')
+        $conductor = $this->tabla('conductores')
             ->where('id', $c->id)
             ->select('id', 'habilitado', 'tipo_flota')
             ->first();
@@ -56,7 +70,7 @@ class AtomicAssignmentService
 
         $esFlotaPropia = in_array($conductor->tipo_flota, ['propia_combi', 'propia_auto'], true);
 
-        $query = DB::table('solicitudes_viaje')
+        $query = $this->tabla('solicitudes_viaje')
             ->whereIn('estado', ['pendiente', 'en_subasta'])
             ->whereNull('conductor_id');
 
@@ -372,7 +386,7 @@ class AtomicAssignmentService
      */
     public function actualizarUbicacion(int $conductorId, float $lat, float $lng): bool
     {
-        return DB::table('conductores')
+        return $this->tabla('conductores')
             ->where('id', $conductorId)
             ->update([
                 'lat_actual' => $lat,
@@ -386,7 +400,7 @@ class AtomicAssignmentService
      */
     public function viajeActivoDe(int $conductorId): ?object
     {
-        return DB::table('solicitudes_viaje')
+        return $this->tabla('solicitudes_viaje')
             ->where('conductor_id', $conductorId)
             ->whereIn('estado', ['asignado', 'en_ruta'])
             ->orderBy('updated_at', 'desc')
@@ -399,7 +413,7 @@ class AtomicAssignmentService
      */
     private function conductorHabilitado(int $conductorId): bool
     {
-        return DB::table('conductores')
+        return $this->tabla('conductores')
             ->where('id', $conductorId)
             ->where('habilitado', true)
             ->exists();

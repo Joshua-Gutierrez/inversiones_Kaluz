@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Turismo;
 
 use App\Http\Controllers\Controller;
+use App\Services\Supabase\Supabase;
 use App\Services\Turismo\PrioridadFlotaPropiaService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,9 +16,23 @@ use Illuminate\View\View;
  */
 class PaqueteTuristicoController extends Controller
 {
+    private function tabla(string $table)
+    {
+        if (extension_loaded('pdo_pgsql')) {
+            try {
+                DB::connection()->getPdo();
+                return DB::table($table);
+            } catch (\Throwable) {
+                // Fallback to Supabase REST
+            }
+        }
+
+        return Supabase::table($table);
+    }
+
     public function index(): View
     {
-        $paquetes = DB::table('paquetes_turisticos')
+        $paquetes = $this->tabla('paquetes_turisticos')
             ->select([
                 'id',
                 'titulo',
@@ -47,7 +62,7 @@ class PaqueteTuristicoController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        DB::table('paquetes_turisticos')->insert([
+        $this->tabla('paquetes_turisticos')->insert([
             ...$this->datosPaquete($request),
             'created_at' => now(),
         ]);
@@ -69,7 +84,7 @@ class PaqueteTuristicoController extends Controller
     {
         $paquete = $this->buscarPaquete($id);
 
-        DB::table('paquetes_turisticos')->where('id', $id)->update($this->datosPaquete($request, $paquete->imagen_url));
+        $this->tabla('paquetes_turisticos')->where('id', $id)->update($this->datosPaquete($request, $paquete->imagen_url));
 
         return redirect()->route('turismo.index')->with('exito', 'El plan turistico fue actualizado correctamente.');
     }
@@ -77,7 +92,7 @@ class PaqueteTuristicoController extends Controller
     public function reservar(Request $request, PrioridadFlotaPropiaService $prioridadFlotaPropiaService): View|RedirectResponse
     {
         $datos = $request->validate([
-            'paquete_id' => ['required', 'integer', 'exists:paquetes_turisticos,id'],
+            'paquete_id' => ['required', 'integer'],
             'cliente_nombre' => ['required', 'string', 'max:100'],
             'cliente_telefono' => ['required', 'string', 'max:20'],
             'fecha_hora' => ['required', 'date', 'after:now'],
@@ -92,7 +107,7 @@ class PaqueteTuristicoController extends Controller
             'pasajeros.min' => 'La reserva requiere al menos un pasajero.',
         ]);
 
-        $paquete = DB::table('paquetes_turisticos')->where('id', $datos['paquete_id'])->first();
+        $paquete = $this->tabla('paquetes_turisticos')->where('id', $datos['paquete_id'])->first();
 
         if ($paquete === null) {
             abort(404, 'El paquete turistico solicitado no existe.');
@@ -101,7 +116,7 @@ class PaqueteTuristicoController extends Controller
         $paradas = json_decode((string) $paquete->itinerario_paradas, true, flags: JSON_THROW_ON_ERROR);
         $origen = $paradas[0];
         $destino = $paradas[array_key_last($paradas)];
-        $viajeId = DB::table('solicitudes_viaje')->insertGetId([
+        $viajeId = $this->tabla('solicitudes_viaje')->insertGetId([
             'cliente_telefono' => $datos['cliente_telefono'],
             'cliente_nombre' => $datos['cliente_nombre'],
             'origen_texto' => $origen['nombre'],
@@ -137,7 +152,7 @@ class PaqueteTuristicoController extends Controller
 
     private function normalizarPaquete(object $paquete): object
     {
-        $paquete->itinerario_paradas = json_decode(
+        $paquete->itinerario_paradas = is_array($paquete->itinerario_paradas) ? $paquete->itinerario_paradas : json_decode(
             (string) $paquete->itinerario_paradas,
             true,
             flags: JSON_THROW_ON_ERROR,
@@ -152,7 +167,7 @@ class PaqueteTuristicoController extends Controller
 
     private function buscarPaquete(int $id): object
     {
-        $paquete = DB::table('paquetes_turisticos')->where('id', $id)->first();
+        $paquete = $this->tabla('paquetes_turisticos')->where('id', $id)->first();
 
         if ($paquete === null) {
             abort(404, 'El paquete turistico solicitado no existe.');

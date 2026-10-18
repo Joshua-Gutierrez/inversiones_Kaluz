@@ -62,7 +62,7 @@ class RastreoGpsController extends Controller
         }
 
         $siguiente = $paradas[min($indiceMasCercano + 1, count($paradas) - 1)];
-        DB::table('conductores')->where('id', $viaje->conductor_id)->update([
+        $this->tabla('conductores')->where('id', $viaje->conductor_id)->update([
             'lat_actual' => $siguiente['lat'],
             'lng_actual' => $siguiente['lng'],
             'updated_at' => now(),
@@ -71,36 +71,85 @@ class RastreoGpsController extends Controller
         return $this->posicion($id);
     }
 
+    private function tabla(string $table)
+    {
+        if (extension_loaded('pdo_pgsql')) {
+            try {
+                DB::connection()->getPdo();
+                return DB::table($table);
+            } catch (\Throwable) {
+                // Fallback to Supabase REST
+            }
+        }
+
+        return \App\Services\Supabase\Supabase::table($table);
+    }
+
     private function obtenerViaje(int $id): object
     {
-        $viaje = DB::table('solicitudes_viaje as viaje')
-            ->leftJoin('conductores as conductor', 'conductor.id', '=', 'viaje.conductor_id')
-            ->select([
-                'viaje.id',
-                'viaje.origen_texto',
-                'viaje.destino_texto',
-                'viaje.origen_lat',
-                'viaje.origen_lng',
-                'viaje.destino_lat',
-                'viaje.destino_lng',
-                'viaje.tipo_servicio',
-                'viaje.paquete_turistico_id',
-                'viaje.conductor_id',
-                'viaje.estado',
-                'conductor.nombre',
-                'conductor.placa',
-                'conductor.modelo_vehiculo',
-                'conductor.telefono_whatsapp',
-                'conductor.lat_actual',
-                'conductor.lng_actual',
-                'conductor.updated_at as conductor_actualizado_en',
-            ])
-            ->where('viaje.id', $id)
-            ->first();
+        if (extension_loaded('pdo_pgsql')) {
+            try {
+                $viaje = DB::table('solicitudes_viaje as viaje')
+                    ->leftJoin('conductores as conductor', 'conductor.id', '=', 'viaje.conductor_id')
+                    ->select([
+                        'viaje.id',
+                        'viaje.origen_texto',
+                        'viaje.destino_texto',
+                        'viaje.origen_lat',
+                        'viaje.origen_lng',
+                        'viaje.destino_lat',
+                        'viaje.destino_lng',
+                        'viaje.tipo_servicio',
+                        'viaje.paquete_turistico_id',
+                        'viaje.conductor_id',
+                        'viaje.estado',
+                        'conductor.nombre',
+                        'conductor.placa',
+                        'conductor.modelo_vehiculo',
+                        'conductor.telefono_whatsapp',
+                        'conductor.lat_actual',
+                        'conductor.lng_actual',
+                        'conductor.updated_at as conductor_actualizado_en',
+                    ])
+                    ->where('viaje.id', $id)
+                    ->first();
 
-        abort_if($viaje === null, 404, 'El viaje solicitado no existe.');
+                if ($viaje !== null) {
+                    return $viaje;
+                }
+            } catch (\Throwable) {
+                // Fallback to Supabase REST
+            }
+        }
 
-        return $viaje;
+        $solicitud = \App\Services\Supabase\Supabase::table('solicitudes_viaje')->where('id', $id)->first();
+        abort_if($solicitud === null, 404, 'El viaje solicitado no existe.');
+
+        $conductor = null;
+        if (!empty($solicitud->conductor_id)) {
+            $conductor = \App\Services\Supabase\Supabase::table('conductores')->where('id', $solicitud->conductor_id)->first();
+        }
+
+        return (object) [
+            'id' => $solicitud->id,
+            'origen_texto' => $solicitud->origen_texto,
+            'destino_texto' => $solicitud->destino_texto,
+            'origen_lat' => $solicitud->origen_lat,
+            'origen_lng' => $solicitud->origen_lng,
+            'destino_lat' => $solicitud->destino_lat,
+            'destino_lng' => $solicitud->destino_lng,
+            'tipo_servicio' => $solicitud->tipo_servicio,
+            'paquete_turistico_id' => $solicitud->paquete_turistico_id ?? null,
+            'conductor_id' => $solicitud->conductor_id ?? null,
+            'estado' => $solicitud->estado,
+            'nombre' => $conductor?->nombre,
+            'placa' => $conductor?->placa,
+            'modelo_vehiculo' => $conductor?->modelo_vehiculo,
+            'telefono_whatsapp' => $conductor?->telefono_whatsapp,
+            'lat_actual' => $conductor?->lat_actual ?? $solicitud->origen_lat,
+            'lng_actual' => $conductor?->lng_actual ?? $solicitud->origen_lng,
+            'conductor_actualizado_en' => $conductor?->updated_at ?? now(),
+        ];
     }
 
     /**
@@ -110,17 +159,17 @@ class RastreoGpsController extends Controller
     {
         if ($viaje->tipo_servicio === 'turismo') {
             if ($viaje->paquete_turistico_id !== null) {
-                $paquete = DB::table('paquetes_turisticos')
+                $paquete = $this->tabla('paquetes_turisticos')
                     ->where('id', $viaje->paquete_turistico_id)
                     ->value('itinerario_paradas');
 
                 if ($paquete !== null) {
-                    return json_decode((string) $paquete, true, flags: JSON_THROW_ON_ERROR);
+                    return is_array($paquete) ? $paquete : json_decode((string) $paquete, true, flags: JSON_THROW_ON_ERROR);
                 }
             }
 
-            foreach (DB::table('paquetes_turisticos')->select('itinerario_paradas')->get() as $paquete) {
-                $paradas = json_decode((string) $paquete->itinerario_paradas, true, flags: JSON_THROW_ON_ERROR);
+            foreach ($this->tabla('paquetes_turisticos')->select('itinerario_paradas')->get() as $paquete) {
+                $paradas = is_array($paquete->itinerario_paradas) ? $paquete->itinerario_paradas : json_decode((string) $paquete->itinerario_paradas, true, flags: JSON_THROW_ON_ERROR);
                 $ultimaParada = $paradas[array_key_last($paradas)];
 
                 if ($paradas[0]['nombre'] === $viaje->origen_texto && $ultimaParada['nombre'] === $viaje->destino_texto) {

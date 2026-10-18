@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Despacho;
 use App\Http\Controllers\Controller;
 use App\Services\Despacho\AtomicAssignmentService;
 use App\Services\Despacho\GeocodingService;
+use App\Services\Supabase\Supabase;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,12 +19,26 @@ use Illuminate\View\View;
  */
 class ConductorPwaController extends Controller
 {
+    private function tabla(string $table)
+    {
+        if (extension_loaded('pdo_pgsql')) {
+            try {
+                DB::connection()->getPdo();
+                return DB::table($table);
+            } catch (\Throwable) {
+                // Si la conexión falla, cae a Supabase REST
+            }
+        }
+
+        return Supabase::table($table);
+    }
+
     /**
      * GET /conductor - Pantalla de entrada / selección de conductor (demo, sin auth compleja).
      */
     public function seleccion(Request $request): View
     {
-        $conductores = DB::table('conductores')
+        $conductores = $this->tabla('conductores')
             ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'tipo_flota', 'estado_comision', 'habilitado')
             ->orderBy('nombre')
             ->get();
@@ -48,7 +63,7 @@ class ConductorPwaController extends Controller
             'telefono_whatsapp' => 'teléfono',
         ]);
 
-        $query = DB::table('conductores');
+        $query = $this->tabla('conductores');
 
         if (! empty($datos['conductor_id'])) {
             $conductor = $query->where('id', $datos['conductor_id'])->first();
@@ -82,7 +97,7 @@ class ConductorPwaController extends Controller
             return redirect()->route('despacho.seleccion');
         }
 
-        $conductor = DB::table('conductores')
+        $conductor = $this->tabla('conductores')
             ->where('id', $conductorId)
             ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'telefono_whatsapp', 'estado_comision', 'habilitado', 'lat_actual', 'lng_actual')
             ->first();
@@ -117,7 +132,7 @@ class ConductorPwaController extends Controller
             return redirect()->route('despacho.seleccion');
         }
 
-        $conductor = DB::table('conductores')
+        $conductor = $this->tabla('conductores')
             ->where('id', $conductorId)
             ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'habilitado', 'lat_actual', 'lng_actual')
             ->first();
@@ -172,7 +187,7 @@ class ConductorPwaController extends Controller
      */
     public function demoCrearSolicitud(): RedirectResponse
     {
-        DB::table('solicitudes_viaje')->insert([
+        $this->tabla('solicitudes_viaje')->insert([
             'cliente_telefono' => '+51999888777',
             'cliente_nombre' => 'María Quispe (demo)',
             'origen_texto' => 'Real Plaza Huancayo',
@@ -331,9 +346,9 @@ class ConductorPwaController extends Controller
         ];
 
         foreach ($semillas as $s) {
-            $existe = DB::table('conductores')->where('placa', $s['placa'])->exists();
+            $existe = $this->tabla('conductores')->where('placa', $s['placa'])->exists();
             if (! $existe) {
-                DB::table('conductores')->insert($s);
+                $this->tabla('conductores')->insert($s);
             }
         }
 
