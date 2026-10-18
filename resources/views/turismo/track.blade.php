@@ -42,168 +42,262 @@
     x-init="iniciar()"
     class="space-y-3.5"
 >
-    <!-- Encabezado de ruta del pasajero -->
-    <div class="flex items-center justify-between gap-2">
-        <div class="min-w-0">
-            <h1 class="font-headline font-extrabold text-lg text-white leading-tight">
-                Tu Viaje en Tiempo Real
-            </h1>
-            <p class="text-xs text-slate-300 truncate mt-0.5">
-                {{ $viaje->origen_texto }} <i class="ri-arrow-right-line text-[#E31B23]"></i> {{ $viaje->destino_texto }}
-            </p>
-        </div>
-    </div>
-
-    <!-- Aviso de estado -->
-    <div x-show="aviso" x-transition
-        class="rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 px-3.5 py-2.5 text-xs font-medium flex items-center justify-between">
-        <span class="flex items-center gap-1.5">
-            <i class="ri-checkbox-circle-fill text-emerald-400"></i>
-            <span x-text="aviso"></span>
-        </span>
-        <button type="button" @click="aviso = ''"><i class="ri-close-line"></i></button>
-    </div>
-
-    <!-- 1. BANDEJA DE CONTRAOFERTAS DE CONDUCTORES (Cuando varios choferes contraofertan) -->
-    <template x-if="!conductor && ofertas.length > 0">
-        <div class="space-y-2.5">
-            <div class="flex items-center justify-between px-1">
-                <span class="text-xs font-headline font-bold text-amber-300 flex items-center gap-1.5">
-                    <i class="ri-Notification-badge-line animate-bounce"></i>
-                    <span x-text="ofertas.length + ' conductores enviaron su propuesta • Elige el más conveniente:'"></span>
-                </span>
+    <!-- PANTALLA DE VIAJE FINALIZADO (Se muestra automáticamente cuando el taxista presiona "Finalizar viaje") -->
+    <template x-if="estado === 'completado'">
+        <div x-transition class="bg-[#111E3B] rounded-3xl border border-emerald-500/40 p-6 text-center shadow-2xl space-y-5 my-4">
+            <div class="w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center mx-auto shadow-[0_0_28px_rgba(16,185,129,0.45)]">
+                <i class="ri-checkbox-circle-fill text-5xl text-emerald-400"></i>
             </div>
 
-            <template x-for="of in ofertas" :key="of.id">
-                <div class="bg-[#111E3B] rounded-2xl border border-amber-400/40 p-3.5 shadow-lg space-y-2.5">
-                    <div class="flex items-center justify-between gap-3">
-                        <div class="flex items-center gap-2.5 min-w-0">
-                            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-700 text-white font-headline font-bold text-sm flex items-center justify-center shrink-0">
-                                <span x-text="of.conductor_nombre.charAt(0)"></span>
-                            </div>
-                            <div class="min-w-0">
-                                <p class="font-headline font-bold text-sm text-white truncate" x-text="of.conductor_nombre"></p>
-                                <p class="text-[11px] text-slate-300 truncate">
-                                    <span x-text="of.modelo"></span> • <strong class="text-amber-300" x-text="of.placa"></strong>
-                                </p>
-                                <p class="text-[11px] text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
-                                    <i class="ri-time-line"></i>
-                                    <span>A <span x-text="of.tiempo_min"></span> min de tu ubicación</span>
-                                </p>
-                            </div>
-                        </div>
+            <div class="space-y-2">
+                <span class="inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full">
+                    <i class="ri-flag-2-fill"></i> Servicio Completado
+                </span>
+                <h1 class="font-headline font-black text-2xl text-white tracking-tight">
+                    ¡Viaje Finalizado!
+                </h1>
+                <p class="text-sm text-slate-300 leading-relaxed max-w-xs mx-auto">
+                    Gracias por su preferencia, no dude en volver a contactarnos.
+                </p>
+            </div>
 
-                        <div class="text-right shrink-0">
-                            <span class="text-[10px] text-slate-400 uppercase font-bold block">Contraoferta</span>
-                            <span class="font-headline font-black text-2xl text-white">
-                                S/ <span x-text="Number(of.monto).toFixed(2)"></span>
-                            </span>
-                        </div>
-                    </div>
-
-                    <button type="button"
-                        @click="elegirContraoferta(of)"
-                        :disabled="eligiendo === of.id"
-                        class="w-full bg-[#D91B23] hover:bg-[#B8141B] disabled:opacity-50 text-white font-headline font-bold text-xs py-2.5 rounded-xl shadow transition flex items-center justify-center gap-1.5">
-                        <i class="ri-check-double-line text-sm"></i>
-                        <span x-text="eligiendo === of.id ? 'Confirmando unidad...' : 'Elegir este conductor por S/ ' + Number(of.monto).toFixed(2)"></span>
-                    </button>
+            <!-- Resumen del recibo del viaje -->
+            <div class="bg-[#081124] rounded-2xl border border-white/10 p-4 text-left space-y-3">
+                <div class="flex items-center justify-between border-b border-white/10 pb-2.5">
+                    <span class="text-xs text-slate-400 font-medium">Total del servicio</span>
+                    <span class="font-headline font-black text-2xl text-emerald-400">
+                        S/ <span x-text="Number(precioFinal || ofertaCliente).toFixed(2)"></span>
+                    </span>
                 </div>
-            </template>
+
+                <div class="space-y-1.5 text-xs">
+                    <div class="flex items-start gap-2 text-slate-200">
+                        <i class="ri-map-pin-2-fill text-[#E31B23] shrink-0 mt-0.5"></i>
+                        <span><strong class="text-slate-400">Origen:</strong> {{ $viaje->origen_texto }}</span>
+                    </div>
+                    <div class="flex items-start gap-2 text-slate-200">
+                        <i class="ri-flag-2-fill text-emerald-400 shrink-0 mt-0.5"></i>
+                        <span><strong class="text-slate-400">Destino:</strong> {{ $viaje->destino_texto }}</span>
+                    </div>
+                </div>
+
+                <template x-if="conductor">
+                    <div class="border-t border-white/10 pt-2.5 flex items-center gap-2.5 text-xs text-slate-300">
+                        <i class="ri-taxi-fill text-amber-400 text-base"></i>
+                        <span class="truncate">
+                            <strong class="text-white" x-text="conductor.nombre"></strong> •
+                            <span x-text="conductor.modelo"></span> (<span class="text-amber-300 font-bold" x-text="conductor.placa"></span>)
+                        </span>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Estrellas decorativas -->
+            <div class="flex items-center justify-center gap-1.5 text-amber-400 text-xl">
+                <i class="ri-star-fill"></i>
+                <i class="ri-star-fill"></i>
+                <i class="ri-star-fill"></i>
+                <i class="ri-star-fill"></i>
+                <i class="ri-star-fill"></i>
+            </div>
+
+            <div class="space-y-2.5 pt-1">
+                <a href="https://wa.me/15552023552?text=Hola"
+                   class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-headline font-bold text-sm py-3.5 px-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
+                    <i class="ri-whatsapp-line text-lg"></i>
+                    <span>Volver al Chat de WhatsApp</span>
+                </a>
+
+                <button type="button" @click="cerrarVentana()"
+                    class="w-full bg-[#081124] hover:bg-white/10 border border-white/15 text-slate-300 font-semibold text-xs py-3 px-4 rounded-xl transition flex items-center justify-center gap-1.5">
+                    <i class="ri-close-circle-line text-sm"></i>
+                    <span>Cerrar ventana</span>
+                </button>
+            </div>
         </div>
     </template>
 
-    <!-- 2. MAPA GPS EN TIEMPO REAL ESTILO INDRIVE (Ubicación Cliente + Ubicación Chofer) -->
-    <div class="relative rounded-2xl overflow-hidden border border-white/15 shadow-xl">
-        <div id="mapa-rastreo" class="h-[44vh] min-h-72 w-full bg-slate-800 z-0"></div>
-
-        <!-- Píldora superior de distancia y acercamiento/alejamiento en tiempo real -->
-        <div class="absolute top-3 left-3 right-3 z-[400] flex items-center justify-between gap-2 pointer-events-none">
-            <div class="bg-[#0A1329]/95 backdrop-blur-xs border border-white/15 text-white px-3 py-1.5 rounded-xl shadow-md text-xs font-semibold flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                <span x-text="textoDistancia">Calculando distancia al taxi...</span>
+    <!-- PANTALLA DE VIAJE CANCELADO -->
+    <template x-if="estado === 'cancelado'">
+        <div x-transition class="bg-[#111E3B] rounded-3xl border border-red-500/40 p-6 text-center shadow-2xl space-y-4 my-4">
+            <div class="w-16 h-16 rounded-full bg-red-500/20 border border-red-400/50 flex items-center justify-center mx-auto text-red-400">
+                <i class="ri-error-warning-fill text-4xl"></i>
             </div>
-
-            <span class="bg-[#111E3B]/95 border border-white/15 text-[11px] font-bold px-2.5 py-1.5 rounded-xl text-amber-300 shadow-md"
-                  x-text="tendenciaMovimiento">
-            </span>
+            <h2 class="font-headline font-bold text-xl text-white">Viaje Cancelado</h2>
+            <p class="text-xs text-slate-300">Este servicio fue cancelado. Puedes solicitar otra unidad inmediatamente desde nuestro WhatsApp.</p>
+            <a href="https://wa.me/15552023552?text=Hola"
+               class="w-full bg-[#E31B23] hover:bg-red-700 text-white font-headline font-bold text-sm py-3 px-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
+                <i class="ri-whatsapp-line text-lg"></i>
+                <span>Solicitar otro Taxi</span>
+            </a>
         </div>
+    </template>
 
-        <!-- Leyenda inferior en el mapa -->
-        <div class="absolute bottom-3 left-3 z-[400] bg-[#0A1329]/90 backdrop-blur-xs border border-white/15 rounded-xl px-3 py-1.5 text-[10px] text-slate-200 flex items-center gap-3">
-            <span class="flex items-center gap-1">
-                <span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span> Tu GPS
-            </span>
-            <span class="flex items-center gap-1">
-                <span class="w-2.5 h-2.5 rounded-full bg-[#E31B23] inline-block"></span> Taxi KALUZ
-            </span>
-            <span class="flex items-center gap-1">
-                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Destino
-            </span>
-        </div>
-    </div>
-
-    <!-- 3. PANEL DEL CONDUCTOR ASIGNADO Y SIMULADOR DE MOVIMIENTO GPS -->
-    <section class="rounded-2xl border border-white/10 bg-[#111E3B] p-4 shadow-lg space-y-3.5">
-        <div class="flex items-center justify-between gap-3">
-            <div>
-                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Estado de la Carrera</p>
-                <p class="font-headline font-bold text-sm text-white mt-0.5"
-                   x-text="estado === 'en_subasta' ? 'Recibiendo ofertas de conductores' : (estado === 'asignado' ? 'El conductor va en camino a recogerte' : (estado === 'en_ruta' ? 'Viaje en curso hacia tu destino' : ucfirst(estado)))">
+    <!-- VISTA ACTIVA MIENTRAS EL VIAJE ESTÁ EN SUBASTA / ASIGNADO / EN RUTA -->
+    <div x-show="estado !== 'completado' && estado !== 'cancelado'" class="space-y-3.5">
+        <!-- Encabezado de ruta del pasajero -->
+        <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+                <h1 class="font-headline font-extrabold text-lg text-white leading-tight">
+                    Tu Viaje en Tiempo Real
+                </h1>
+                <p class="text-xs text-slate-300 truncate mt-0.5">
+                    {{ $viaje->origen_texto }} <i class="ri-arrow-right-line text-[#E31B23]"></i> {{ $viaje->destino_texto }}
                 </p>
             </div>
-            <div class="text-right">
-                <span class="text-[10px] text-slate-400 uppercase font-bold block">Tarifa</span>
-                <span class="font-headline font-black text-xl text-emerald-400">
-                    S/ <span x-text="Number(precioFinal || ofertaCliente).toFixed(2)"></span>
+        </div>
+
+        <!-- Aviso de estado -->
+        <div x-show="aviso" x-transition
+            class="rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 px-3.5 py-2.5 text-xs font-medium flex items-center justify-between">
+            <span class="flex items-center gap-1.5">
+                <i class="ri-checkbox-circle-fill text-emerald-400"></i>
+                <span x-text="aviso"></span>
+            </span>
+            <button type="button" @click="aviso = ''"><i class="ri-close-line"></i></button>
+        </div>
+
+        <!-- 1. BANDEJA DE CONTRAOFERTAS DE CONDUCTORES (Cuando varios choferes contraofertan) -->
+        <template x-if="!conductor && ofertas.length > 0">
+            <div class="space-y-2.5">
+                <div class="flex items-center justify-between px-1">
+                    <span class="text-xs font-headline font-bold text-amber-300 flex items-center gap-1.5">
+                        <i class="ri-Notification-badge-line animate-bounce"></i>
+                        <span x-text="ofertas.length + ' conductores enviaron su propuesta • Elige el más conveniente:'"></span>
+                    </span>
+                </div>
+
+                <template x-for="of in ofertas" :key="of.id">
+                    <div class="bg-[#111E3B] rounded-2xl border border-amber-400/40 p-3.5 shadow-lg space-y-2.5">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-700 text-white font-headline font-bold text-sm flex items-center justify-center shrink-0">
+                                    <span x-text="of.conductor_nombre.charAt(0)"></span>
+                                </div>
+                                <div class="min-w-0">
+                                    <p class="font-headline font-bold text-sm text-white truncate" x-text="of.conductor_nombre"></p>
+                                    <p class="text-[11px] text-slate-300 truncate">
+                                        <span x-text="of.modelo"></span> • <strong class="text-amber-300" x-text="of.placa"></strong>
+                                    </p>
+                                    <p class="text-[11px] text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
+                                        <i class="ri-time-line"></i>
+                                        <span>A <span x-text="of.tiempo_min"></span> min de tu ubicación</span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="text-right shrink-0">
+                                <span class="text-[10px] text-slate-400 uppercase font-bold block">Contraoferta</span>
+                                <span class="font-headline font-black text-2xl text-white">
+                                    S/ <span x-text="Number(of.monto).toFixed(2)"></span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <button type="button"
+                            @click="elegirContraoferta(of)"
+                            :disabled="eligiendo === of.id"
+                            class="w-full bg-[#D91B23] hover:bg-[#B8141B] disabled:opacity-50 text-white font-headline font-bold text-xs py-2.5 rounded-xl shadow transition flex items-center justify-center gap-1.5">
+                            <i class="ri-check-double-line text-sm"></i>
+                            <span x-text="eligiendo === of.id ? 'Confirmando unidad...' : 'Elegir este conductor por S/ ' + Number(of.monto).toFixed(2)"></span>
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <!-- 2. MAPA GPS EN TIEMPO REAL ESTILO INDRIVE (Ubicación Cliente + Ubicación Chofer) -->
+        <div class="relative rounded-2xl overflow-hidden border border-white/15 shadow-xl">
+            <div id="mapa-rastreo" class="h-[44vh] min-h-72 w-full bg-slate-800 z-0"></div>
+
+            <!-- Píldora superior de distancia y acercamiento/alejamiento en tiempo real -->
+            <div class="absolute top-3 left-3 right-3 z-[400] flex items-center justify-between gap-2 pointer-events-none">
+                <div class="bg-[#0A1329]/95 backdrop-blur-xs border border-white/15 text-white px-3 py-1.5 rounded-xl shadow-md text-xs font-semibold flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span x-text="textoDistancia">Calculando distancia al taxi...</span>
+                </div>
+
+                <span class="bg-[#111E3B]/95 border border-white/15 text-[11px] font-bold px-2.5 py-1.5 rounded-xl text-amber-300 shadow-md"
+                      x-text="tendenciaMovimiento">
+                </span>
+            </div>
+
+            <!-- Leyenda inferior en el mapa -->
+            <div class="absolute bottom-3 left-3 z-[400] bg-[#0A1329]/90 backdrop-blur-xs border border-white/15 rounded-xl px-3 py-1.5 text-[10px] text-slate-200 flex items-center gap-3">
+                <span class="flex items-center gap-1">
+                    <span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span> Tu GPS
+                </span>
+                <span class="flex items-center gap-1">
+                    <span class="w-2.5 h-2.5 rounded-full bg-[#E31B23] inline-block"></span> Taxi KALUZ
+                </span>
+                <span class="flex items-center gap-1">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Destino
                 </span>
             </div>
         </div>
 
-        <template x-if="conductor">
-            <div class="border-t border-white/10 pt-3.5 space-y-3">
-                <div class="flex items-center justify-between gap-3">
-                    <div class="flex items-center gap-3 min-w-0">
-                        <div class="w-11 h-11 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center justify-center shrink-0">
-                            <i class="ri-taxi-fill text-xl"></i>
+        <!-- 3. PANEL DEL CONDUCTOR ASIGNADO Y SIMULADOR DE MOVIMIENTO GPS -->
+        <section class="rounded-2xl border border-white/10 bg-[#111E3B] p-4 shadow-lg space-y-3.5">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Estado de la Carrera</p>
+                    <p class="font-headline font-bold text-sm text-white mt-0.5"
+                       x-text="estado === 'en_subasta' ? 'Recibiendo ofertas de conductores' : (estado === 'asignado' ? 'El conductor va en camino a recogerte' : (estado === 'en_ruta' ? 'Viaje en curso hacia tu destino' : ucfirst(estado)))">
+                    </p>
+                </div>
+                <div class="text-right">
+                    <span class="text-[10px] text-slate-400 uppercase font-bold block">Tarifa</span>
+                    <span class="font-headline font-black text-xl text-emerald-400">
+                        S/ <span x-text="Number(precioFinal || ofertaCliente).toFixed(2)"></span>
+                    </span>
+                </div>
+            </div>
+
+            <template x-if="conductor">
+                <div class="border-t border-white/10 pt-3.5 space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-11 h-11 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center justify-center shrink-0">
+                                <i class="ri-taxi-fill text-xl"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <p class="font-headline font-bold text-sm text-white truncate" x-text="conductor.nombre"></p>
+                                <p class="text-xs text-slate-300 truncate">
+                                    <span x-text="conductor.modelo"></span> • <strong class="text-amber-300" x-text="conductor.placa"></strong>
+                                </p>
+                            </div>
                         </div>
-                        <div class="min-w-0">
-                            <p class="font-headline font-bold text-sm text-white truncate" x-text="conductor.nombre"></p>
-                            <p class="text-xs text-slate-300 truncate">
-                                <span x-text="conductor.modelo"></span> • <strong class="text-amber-300" x-text="conductor.placa"></strong>
-                            </p>
-                        </div>
+
+                        <a :href="'https://wa.me/51' + String(conductor.telefono || '964111222').replace(/\D/g, '')"
+                           target="_blank"
+                           class="shrink-0 inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl px-3.5 py-2.5 text-xs font-bold text-white shadow-md transition">
+                            <i class="ri-whatsapp-line text-base"></i>
+                            <span>WhatsApp</span>
+                        </a>
                     </div>
 
-                    <a :href="'https://wa.me/51' + String(conductor.telefono || '964111222').replace(/\D/g, '')"
-                       target="_blank"
-                       class="shrink-0 inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl px-3.5 py-2.5 text-xs font-bold text-white shadow-md transition">
-                        <i class="ri-whatsapp-line text-base"></i>
-                        <span>WhatsApp</span>
-                    </a>
+                    <!-- Botón para simular el movimiento GPS en vivo (acercamiento del chofer al cliente y luego al destino) -->
+                    <button type="button" @click="avanzarTaxi()"
+                        class="flex w-full items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10 px-4 py-2.5 text-xs font-bold text-white transition">
+                        <i class="ri-navigation-fill text-emerald-400"></i>
+                        <span>Simular movimiento GPS del Taxi (Acercarse)</span>
+                    </button>
                 </div>
+            </template>
 
-                <!-- Botón para simular el movimiento GPS en vivo (acercamiento del chofer al cliente y luego al destino) -->
-                <button type="button" @click="avanzarTaxi()"
-                    class="flex w-full items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10 px-4 py-2.5 text-xs font-bold text-white transition">
-                    <i class="ri-navigation-fill text-emerald-400"></i>
-                    <span>Simular movimiento GPS del Taxi (Acercarse)</span>
-                </button>
-            </div>
-        </template>
-
-        <template x-if="!conductor && ofertas.length === 0">
-            <div class="rounded-xl border border-amber-500/30 bg-amber-500/15 p-3 text-xs text-amber-200 flex items-center justify-between gap-2">
-                <div class="flex items-center gap-2">
-                    <i class="ri-radar-line text-base animate-spin"></i>
-                    <span>Esperando contraofertas de taxistas cercanos...</span>
+            <template x-if="!conductor && ofertas.length === 0">
+                <div class="rounded-xl border border-amber-500/30 bg-amber-500/15 p-3 text-xs text-amber-200 flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                        <i class="ri-radar-line text-base animate-spin"></i>
+                        <span>Esperando contraofertas de taxistas cercanos...</span>
+                    </div>
+                    <button type="button" @click="simularContraofertas()" class="underline font-bold shrink-0">
+                        Generar ofertas
+                    </button>
                 </div>
-                <button type="button" @click="simularContraofertas()" class="underline font-bold shrink-0">
-                    Generar ofertas
-                </button>
-            </div>
-        </template>
-    </section>
+            </template>
+        </section>
+    </div>
 </div>
 @endsection
 
@@ -382,10 +476,22 @@
                     if (!r.ok) return;
                     const d = await r.json();
 
+                    const estadoAnterior = this.estado;
                     this.estado = d.estado;
                     this.precioFinal = d.precio_final;
                     this.conductor = d.conductor;
                     this.ofertas = d.ofertas || [];
+
+                    if (d.estado === 'completado' || d.estado === 'cancelado') {
+                        if (this.timer) {
+                            clearInterval(this.timer);
+                            this.timer = null;
+                        }
+                        if (estadoAnterior !== d.estado && navigator.vibrate) {
+                            navigator.vibrate([150, 80, 150]);
+                        }
+                        return;
+                    }
 
                     if (d.lat !== null && d.lng !== null) {
                         this.taxiLat = d.lat;
@@ -393,6 +499,13 @@
                         this.actualizarRutaYDistancia();
                     }
                 } catch (e) {}
+            },
+
+            cerrarVentana() {
+                window.close();
+                setTimeout(() => {
+                    window.location.href = 'https://wa.me/15552023552?text=Hola';
+                }, 300);
             },
 
             async elegirContraoferta(oferta) {
