@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Despacho;
 
 use App\Http\Controllers\Controller;
 use App\Services\Despacho\AtomicAssignmentService;
+use App\Services\Despacho\GeocodingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -132,9 +133,13 @@ class ConductorPwaController extends Controller
             return redirect()->route('despacho.pwa');
         }
 
+        $geocodificador = app(GeocodingService::class);
+
         return view('despacho.viaje-activo', [
             'conductor' => $conductor,
             'viajeActivo' => $viajeActivo,
+            'ubicacionOrigen' => $geocodificador->coordenadas($viajeActivo->origen_texto),
+            'ubicacionDestino' => $geocodificador->coordenadas($viajeActivo->destino_texto),
         ]);
     }
 
