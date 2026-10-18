@@ -2,7 +2,6 @@
 
 namespace App\Services\Despacho;
 
-use App\Models\Conductor;
 use App\Services\Supabase\Supabase;
 use Illuminate\Support\Facades\DB;
 
@@ -12,17 +11,19 @@ use Illuminate\Support\Facades\DB;
  * Garantiza que dos conductores nunca ganen el mismo viaje en el mismo milisegundo,
  * usando UPDATE condicionales atómicos sobre PostgreSQL (Regla de Oro #1 de CONTEXT.md).
  *
- * CONTRATO DE INTEGRACIÓN (Dev 4 - Bot WhatsApp llama a aceptarContraoferta):
+ * CONTRATO DE INTEGRACIÓN:
  *
- *  - solicitudesDisponibles(Conductor $c): \Illuminate\Support\Collection
+ *  - solicitudesDisponibles(object $c): \Illuminate\Support\Collection
  *  - aceptarViaje(int $solicitudId, int $conductorId): array
  *  - contraofertar(int $solicitudId, int $conductorId, float $monto, int $tiempoLlegadaMin): array
- *  - aceptarContraoferta(int $ofertaId): array
+ *  - aceptarContraoferta(int $ofertaId): array  (lo llama Dev 3 desde /track/{id})
  *  - actualizarEstadoViaje(int $solicitudId, int $conductorId, string $nuevoEstado): array
  *  - actualizarUbicacion(int $conductorId, float $lat, float $lng): bool
  *  - viajeActivoDe(int $conductorId): ?object
  *
- * Todas las respuestas siguen la forma: ['ok' => bool, 'mensaje' => string, 'data' => mixed]
+ * Todas las respuestas siguen la forma: ['ok' => bool, 'mensaje' => string, 'data' => mixed].
+ * La lectura/escritura usa PostgreSQL cuando pdo_pgsql está disponible y cae a Supabase
+ * REST en entornos serverless (Vercel), igual que el resto de módulos del proyecto.
  */
 class AtomicAssignmentService
 {
@@ -136,6 +137,16 @@ class AtomicAssignmentService
         }
 
         return $this->transaccion(function () use ($solicitudId, $conductorId) {
+            $viajeEnCurso = $this->viajeActivoDe($conductorId);
+
+            if ($viajeEnCurso) {
+                return [
+                    'ok' => false,
+                    'mensaje' => 'Ya tienes un viaje activo. Termínalo antes de aceptar otro.',
+                    'data' => $viajeEnCurso,
+                ];
+            }
+
             $solicitud = $this->tabla('solicitudes_viaje')
                 ->where('id', $solicitudId)
                 ->lockForUpdate()
@@ -178,6 +189,13 @@ class AtomicAssignmentService
                 ->where('estado', 'pendiente')
                 ->update(['estado' => 'rechazada']);
 
+            // Un conductor con viaje activo no debe quedar con ofertas abiertas que
+            // el bot podría aceptar y dejarle dos viajes simultáneos.
+            $this->tabla('ofertas_conductores')
+                ->where('conductor_id', $conductorId)
+                ->where('estado', 'pendiente')
+                ->update(['estado' => 'rechazada']);
+
             return [
                 'ok' => true,
                 'mensaje' => 'Viaje aceptado. ¡Vamos!',
@@ -211,6 +229,14 @@ class AtomicAssignmentService
         }
 
         return $this->transaccion(function () use ($solicitudId, $conductorId, $monto, $tiempoLlegadaMin) {
+            if ($this->viajeActivoDe($conductorId)) {
+                return [
+                    'ok' => false,
+                    'mensaje' => 'Ya tienes un viaje activo. Termínalo antes de contraofertar.',
+                    'data' => null,
+                ];
+            }
+
             $solicitud = $this->tabla('solicitudes_viaje')
                 ->where('id', $solicitudId)
                 ->lockForUpdate()
@@ -308,6 +334,18 @@ class AtomicAssignmentService
                 return [
                     'ok' => false,
                     'mensaje' => 'El conductor elegido tiene la cuenta bloqueada. Elige otra opción.',
+                    'data' => null,
+                ];
+            }
+
+            if ($this->viajeActivoDe($conductorId)) {
+                $this->tabla('ofertas_conductores')
+                    ->where('id', $ofertaId)
+                    ->update(['estado' => 'rechazada']);
+
+                return [
+                    'ok' => false,
+                    'mensaje' => 'El conductor elegido ya tiene un viaje activo. Elige otra opción.',
                     'data' => null,
                 ];
             }
@@ -449,96 +487,33 @@ class AtomicAssignmentService
     }
 
     /**
-     * Panel del conductor (datos + viaje activo) en UNA sola ida a la base de datos.
-     *
-     * La latencia por consulta al pooler de Supabase (~450 ms) domina el tiempo de
-     * respuesta de la PWA, por eso se agrupan las lecturas en un solo round-trip.
-     *
-     * @return object{conductor: ?object, viaje_activo: ?object}|null
+     * Solicitud puntual (útil para armar la notificación de WhatsApp sin duplicar el acceso a datos).
      */
-    public function panelDe(int $conductorId): ?object
+    public function obtenerSolicitud(int $solicitudId): ?object
     {
-        $fila = DB::selectOne(<<<'SQL'
-            WITH c AS (
-                SELECT id, nombre, placa, modelo_vehiculo, telefono_whatsapp,
-                       estado_comision, habilitado, lat_actual, lng_actual, tipo_flota
-                FROM conductores
-                WHERE id = ?
-            ),
-            act AS (
-                SELECT a.*
-                FROM solicitudes_viaje a
-                WHERE a.conductor_id = ? AND a.estado IN ('asignado', 'en_ruta')
-                ORDER BY a.updated_at DESC
-                LIMIT 1
-            )
-            SELECT
-                (SELECT row_to_json(c) FROM c) AS conductor,
-                (SELECT row_to_json(act) FROM act) AS viaje_activo
-            SQL, [$conductorId, $conductorId]);
-
-        if (! $fila) {
-            return null;
-        }
-
-        return (object) [
-            'conductor' => $fila->conductor ? json_decode($fila->conductor) : null,
-            'viaje_activo' => $fila->viaje_activo ? json_decode($fila->viaje_activo) : null,
-        ];
+        return $this->tabla('solicitudes_viaje')->where('id', $solicitudId)->first();
     }
 
     /**
-     * Resumen del radar (conductor + solicitudes disponibles + viaje activo) en UNA consulta.
-     *
-     * @return object{conductor: ?object, solicitudes: array<int, object>, viaje_activo: ?object}|null
+     * Contraofertas pendientes de un conductor, indexables por solicitud_id en el radar.
      */
-    public function radarDe(int $conductorId): ?object
+    public function ofertasPendientesDe(int $conductorId)
     {
-        $fila = DB::selectOne(<<<'SQL'
-            WITH c AS (
-                SELECT id, nombre, placa, modelo_vehiculo, telefono_whatsapp,
-                       estado_comision, habilitado, lat_actual, lng_actual, tipo_flota
-                FROM conductores
-                WHERE id = ?
-            ),
-            sol AS (
-                SELECT s.*,
-                       CASE
-                           WHEN c.tipo_flota IN ('propia_combi', 'propia_auto')
-                                AND s.tipo_servicio = 'turismo' THEN 0
-                           ELSE 1
-                       END AS orden_flota
-                FROM solicitudes_viaje s
-                CROSS JOIN c
-                WHERE s.estado IN ('pendiente', 'en_subasta')
-                  AND s.conductor_id IS NULL
-                  AND (
-                      c.tipo_flota IN ('propia_combi', 'propia_auto')
-                      OR s.tipo_servicio <> 'turismo'
-                  )
-            ),
-            act AS (
-                SELECT a.*
-                FROM solicitudes_viaje a
-                WHERE a.conductor_id = ? AND a.estado IN ('asignado', 'en_ruta')
-                ORDER BY a.updated_at DESC
-                LIMIT 1
-            )
-            SELECT
-                (SELECT row_to_json(c) FROM c) AS conductor,
-                (SELECT COALESCE(json_agg(sol ORDER BY sol.orden_flota, sol.created_at), '[]'::json) FROM sol) AS solicitudes,
-                (SELECT row_to_json(act) FROM act) AS viaje_activo
-            SQL, [$conductorId, $conductorId]);
+        return $this->tabla('ofertas_conductores')
+            ->where('conductor_id', $conductorId)
+            ->where('estado', 'pendiente')
+            ->get();
+    }
 
-        if (! $fila) {
-            return null;
-        }
-
-        return (object) [
-            'conductor' => $fila->conductor ? json_decode($fila->conductor) : null,
-            'solicitudes' => json_decode($fila->solicitudes ?? '[]') ?: [],
-            'viaje_activo' => $fila->viaje_activo ? json_decode($fila->viaje_activo) : null,
-        ];
+    /**
+     * Últimas solicitudes recibidas (para resolver el teléfono real cuando el demo usa uno ficticio).
+     */
+    public function solicitudesRecientes(int $limite = 15)
+    {
+        return $this->tabla('solicitudes_viaje')
+            ->orderByDesc('id')
+            ->limit($limite)
+            ->get();
     }
 
     /**

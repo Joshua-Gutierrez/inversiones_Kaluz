@@ -53,7 +53,7 @@
                 </div>
 
                 <div class="space-y-2 pt-1">
-                    <a href="{{ route('despacho.cuota') }}"
+                    <a href="{{ route('despacho.cuota', ['conductor_id' => $conductor->id ?? null]) }}"
                        class="w-full bg-[#0A1329] hover:bg-[#132347] text-white font-headline font-bold rounded-xl py-3 px-4 text-xs shadow-md flex items-center justify-center gap-2 transition">
                         <i class="ri-qr-code-line text-base text-emerald-400"></i>
                         <span>Yapear S/ 1.00 Ahora</span>
@@ -83,7 +83,7 @@
                         <i class="ri-file-shield-2-line text-base text-amber-600"></i>
                         <div>
                             <p class="font-bold text-[#0A1329]">SOAT / AFOCAT</p>
-                            <p class="text-[11px] text-amber-700 font-medium">Próximo a vencer • {{ now()->addDays(4)->format('d/m/Y') }}</p>
+                            <p class="text-[11px] text-amber-700 font-medium">Vence: {{ !empty($conductor->fecha_vencimiento_permiso) ? \Illuminate\Support\Carbon::parse($conductor->fecha_vencimiento_permiso)->format('d/m/Y') : now()->addDays(4)->format('d/m/Y') }}</p>
                         </div>
                     </div>
                     <span class="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-md">Por renovar</span>

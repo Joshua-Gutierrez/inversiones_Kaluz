@@ -8,7 +8,9 @@ use App\Services\Despacho\GeocodingService;
 use App\Services\Supabase\Supabase;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 /**
@@ -19,6 +21,8 @@ use Illuminate\View\View;
  */
 class ConductorPwaController extends Controller
 {
+    public function __construct(protected AtomicAssignmentService $asignacion) {}
+
     private function tabla(string $table)
     {
         if (extension_loaded('pdo_pgsql')) {
@@ -116,14 +120,20 @@ class ConductorPwaController extends Controller
         $ingresosMes = $ingresosReales + ($habilitado ? 1740.00 : 1120.00);
 
         // 2. Pagos diarios (S/ 1.00) y cuotas mensuales
-        $deudaDiaria = $habilitado
-            ? 0.00
-            : (str_contains((string) $conductor->nombre, '3') ? 3.00 : (str_contains((string) $conductor->nombre, '5') ? 5.00 : 1.00));
-        $diasMora = $habilitado ? 0 : (int) max(1, $deudaDiaria);
-
         $vencComision = ! empty($conductor->fecha_vencimiento_comision)
-            ? \Illuminate\Support\Carbon::parse($conductor->fecha_vencimiento_comision)
+            ? Carbon::parse($conductor->fecha_vencimiento_comision)
             : ($habilitado ? now()->addDays(12) : now()->subDays(2));
+
+        // La deuda diaria se deriva del vencimiento real de la comisión (S/ 1.00 por día).
+        $diasMora = 0;
+        $deudaDiaria = 0.00;
+
+        if (! $habilitado) {
+            $diasMora = $vencComision->isPast()
+                ? max(1, (int) $vencComision->diffInDays(now()))
+                : 1;
+            $deudaDiaria = $diasMora * 1.00;
+        }
 
         [$conceptoMensual, $montoMensual] = match ($tipoFlota) {
             'propia_combi' => ['Cuota Flota Propia Combi / Turismo', 450.00],
@@ -138,16 +148,16 @@ class ConductorPwaController extends Controller
 
         // 3. Documentos (Licencia MTC, SOAT, Revisión Técnica CITV)
         $vencPermiso = ! empty($conductor->fecha_vencimiento_permiso)
-            ? \Illuminate\Support\Carbon::parse($conductor->fecha_vencimiento_permiso)
+            ? Carbon::parse($conductor->fecha_vencimiento_permiso)
             : now()->addMonths(6);
 
-        $soatVencido = str_contains(strtolower((string) $conductor->nombre), 'soat') || $vencPermiso->isPast();
-        $soatPorVencer = ! $soatVencido && $vencPermiso->diffInDays(now(), false) > -15;
+        $soatVencido = $vencPermiso->isPast();
+        $soatPorVencer = ! $soatVencido
+            && now()->diffInDays($vencPermiso, false) >= 0
+            && now()->diffInDays($vencPermiso, false) <= 15;
 
         $estadoSoat = $soatVencido ? 'vencido' : ($soatPorVencer ? 'por_vencer' : 'vigente');
-        $fechaSoat = $soatVencido
-            ? now()->subDays(5)->format('d/m/Y')
-            : $vencPermiso->format('d/m/Y');
+        $fechaSoat = $vencPermiso->format('d/m/Y');
 
         $idNum = (int) ($conductor->id ?? 1);
         $licenciaPorVencer = ($idNum % 5 === 0);
@@ -156,8 +166,9 @@ class ConductorPwaController extends Controller
             ? now()->addDays(12)->format('d/m/Y')
             : now()->addMonths(9)->format('d/m/Y');
 
-        $revisionVencida = ! $habilitado && str_contains(strtolower((string) $conductor->nombre), 'soat');
-        $revisionPorVencer = ! $revisionVencida && ($idNum % 4 === 0);
+        // La revisión técnica no tiene columna propia en el padrón: solo se marca por vencer.
+        $revisionVencida = false;
+        $revisionPorVencer = ($idNum % 4 === 0);
         $estadoRevision = $revisionVencida ? 'vencido' : ($revisionPorVencer ? 'por_vencer' : 'vigente');
         $fechaRevision = $revisionVencida
             ? now()->subDays(3)->format('d/m/Y')
@@ -300,34 +311,27 @@ class ConductorPwaController extends Controller
     {
         $conductorId = $this->resolverConductorId($request);
 
-        $conductor = $conductorId
-            ? $this->tabla('conductores')
-                ->where('id', $conductorId)
-                ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'telefono_whatsapp', 'estado_comision', 'habilitado', 'lat_actual', 'lng_actual')
-                ->first()
-            : null;
+        $conductor = $conductorId ? $this->asignacion->obtenerConductor($conductorId) : null;
 
-        // Si entra directo a /conductor/radar sin haber elegido unidad aún, tomar el primer conductor habilitado
         if (! $conductor) {
-            $conductor = $this->tabla('conductores')
-                ->where('habilitado', true)
-                ->orderBy('id')
-                ->first();
+            $request->session()->forget('conductor_id');
 
-            if (! $conductor) {
-                return redirect()->route('despacho.seleccion');
-            }
-
-            $request->session()->put('conductor_id', (int) $conductor->id);
+            return redirect()->route('despacho.seleccion');
         }
 
         if (! $conductor->habilitado) {
             return redirect()->route('despacho.pwa.bloqueado', ['conductor_id' => $conductor->id]);
         }
 
+        $viajeActivo = $this->asignacion->viajeActivoDe((int) $conductor->id);
+
+        if ($viajeActivo) {
+            return redirect()->route('despacho.viaje', ['conductor_id' => $conductor->id]);
+        }
+
         return view('despacho.radar', [
             'conductor' => $conductor,
-            'viajeActivo' => $panel->viaje_activo,
+            'viajeActivo' => null,
         ]);
     }
 
@@ -342,16 +346,13 @@ class ConductorPwaController extends Controller
             return redirect()->route('despacho.seleccion');
         }
 
-        $conductor = $this->tabla('conductores')
-            ->where('id', $conductorId)
-            ->select('id', 'nombre', 'placa', 'modelo_vehiculo', 'habilitado', 'lat_actual', 'lng_actual')
-            ->first();
+        $conductor = $this->asignacion->obtenerConductor($conductorId);
 
         if (! $conductor || ! $conductor->habilitado) {
             return redirect()->route('despacho.pwa.bloqueado', ['conductor_id' => $conductorId]);
         }
 
-        $viajeActivo = $panel->viaje_activo;
+        $viajeActivo = $this->asignacion->viajeActivoDe($conductorId);
 
         if (! $viajeActivo) {
             return redirect()->route('despacho.pwa', ['conductor_id' => $conductor->id]);
@@ -387,9 +388,7 @@ class ConductorPwaController extends Controller
     public function bloqueado(Request $request): View
     {
         $conductorId = $this->resolverConductorId($request);
-        $conductor = $conductorId
-            ? $this->tabla('conductores')->where('id', $conductorId)->first()
-            : $this->tabla('conductores')->where('habilitado', false)->first();
+        $conductor = $conductorId ? $this->tabla('conductores')->where('id', $conductorId)->first() : null;
 
         $motivo = $request->session()->get(
             'motivo_bloqueo',
@@ -408,9 +407,11 @@ class ConductorPwaController extends Controller
     public function cuota(Request $request): View
     {
         $conductorId = $this->resolverConductorId($request);
-        $conductor = $conductorId
-            ? $this->tabla('conductores')->where('id', $conductorId)->first()
-            : $this->tabla('conductores')->orderBy('id')->first();
+        $conductor = $conductorId ? $this->tabla('conductores')->where('id', $conductorId)->first() : null;
+
+        if (! $conductor) {
+            return redirect()->route('despacho.seleccion');
+        }
 
         return view('despacho.pagar-cuota', [
             'conductor' => $conductor,
@@ -418,19 +419,53 @@ class ConductorPwaController extends Controller
     }
 
     /**
-     * POST /conductor/cuota/pagar - Registra el pago de S/ 1.00 y desbloquea al conductor.
+     * POST /conductor/cuota/pagar - Registra el pago de S/ 1.00 (Yape/Plin), lo deja en la
+     * tabla de pagos del proyecto y desbloquea al conductor.
      */
     public function pagarCuota(Request $request): RedirectResponse
     {
+        $request->validate([
+            'comprobante' => ['nullable', 'image', 'max:5120'],
+        ]);
+
         $conductorId = $this->resolverConductorId($request);
 
-        if ($conductorId) {
-            $this->tabla('conductores')->where('id', (int) $conductorId)->update([
-                'habilitado' => true,
-                'estado_comision' => 'al_dia',
-                'fecha_vencimiento_comision' => now()->addDay(),
-                'updated_at' => now(),
+        if (! $conductorId) {
+            return redirect()->route('despacho.seleccion')
+                ->with('error', 'Selecciona un conductor para registrar el pago.');
+        }
+
+        $comprobanteUrl = null;
+
+        if ($request->hasFile('comprobante')) {
+            try {
+                $ruta = $request->file('comprobante')->store('comprobantes', 'public');
+                $comprobanteUrl = $ruta ? Storage::url($ruta) : null;
+            } catch (\Throwable) {
+                // En serverless el disco puede ser de solo lectura: el pago igual se registra.
+            }
+        }
+
+        $this->tabla('conductores')->where('id', (int) $conductorId)->update([
+            'habilitado' => true,
+            'estado_comision' => 'al_dia',
+            'fecha_vencimiento_comision' => now()->addDay(),
+            'updated_at' => now(),
+        ]);
+
+        try {
+            $this->tabla('pagos_comisiones')->insert([
+                'conductor_id' => (int) $conductorId,
+                'monto' => 1.00,
+                'dias_pagados' => 1,
+                'metodo_pago' => 'yape',
+                'comprobante_url' => $comprobanteUrl,
+                'estado' => 'aprobado',
+                'fecha_registro' => now(),
+                'fecha_aprobacion' => now(),
             ]);
+        } catch (\Throwable) {
+            // No interrumpir el desbloqueo si el esquema remoto difiere.
         }
 
         return redirect()->route('despacho.desbloqueado', ['conductor_id' => $conductorId]);
@@ -439,12 +474,14 @@ class ConductorPwaController extends Controller
     /**
      * GET /conductor/desbloqueado - Pantalla de confirmación de desbloqueo inmediato.
      */
-    public function desbloqueado(Request $request): View
+    public function desbloqueado(Request $request): View|RedirectResponse
     {
         $conductorId = $this->resolverConductorId($request);
-        $conductor = $conductorId
-            ? $this->tabla('conductores')->where('id', $conductorId)->first()
-            : $this->tabla('conductores')->where('habilitado', true)->first();
+        $conductor = $conductorId ? $this->tabla('conductores')->where('id', $conductorId)->first() : null;
+
+        if (! $conductor) {
+            return redirect()->route('despacho.seleccion');
+        }
 
         return view('despacho.desbloqueado', [
             'conductor' => $conductor,

@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Despacho;
 
 use App\Http\Controllers\Controller;
 use App\Services\Despacho\AtomicAssignmentService;
-use App\Services\Supabase\Supabase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -38,14 +37,19 @@ class SubastaAtomicaController extends Controller
             return response()->json(['ok' => false, 'mensaje' => 'Conductor no encontrado.', 'data' => null], 404);
         }
 
+        if (! $conductor->habilitado) {
+            return response()->json([
+                'ok' => false,
+                'bloqueado' => true,
+                'mensaje' => 'Candado Financiero activo: regulariza tu cuota diaria de S/ 1.00 para volver al radar.',
+                'data' => null,
+            ], 403);
+        }
+
         $solicitudes = $this->asignacion->solicitudesDisponibles($conductor);
         $viajeActivo = $this->asignacion->viajeActivoDe($conductorId);
 
-        $misOfertas = Supabase::table('ofertas_conductores')
-            ->where('conductor_id', $conductorId)
-            ->where('estado', 'pendiente')
-            ->get()
-            ->keyBy('solicitud_id');
+        $misOfertas = $this->asignacion->ofertasPendientesDe($conductorId)->keyBy('solicitud_id');
 
         return response()->json([
             'ok' => true,
@@ -112,14 +116,18 @@ class SubastaAtomicaController extends Controller
         // FLUJO 1 - Paso 4: Enviar botones interactivos por WhatsApp al pasajero cuando el conductor lanza contraoferta
         if ($resultado['ok']) {
             try {
-                $solicitud = Supabase::table('solicitudes_viaje')->where('id', $solicitudId)->first();
+                $solicitud = $this->asignacion->obtenerSolicitud($solicitudId);
                 $conductor = $this->asignacion->obtenerConductor($conductorId);
                 $ofertaId = (int) ($resultado['data']->id ?? 0);
 
                 if ($solicitud && ! empty($solicitud->cliente_telefono) && $conductor) {
                     $telefonoWa = $this->normalizarTelefonoWa((string) $solicitud->cliente_telefono);
 
-                    if (function_exists('enviarContraofertaInteractiva')) {
+                    if (
+                        function_exists('enviarContraofertaInteractiva')
+                        && env('META_WA_BEARER_TOKEN')
+                        && env('META_WA_PHONE_NUMBER_ID')
+                    ) {
                         enviarContraofertaInteractiva(
                             $telefonoWa,
                             (string) $conductor->nombre,
@@ -276,10 +284,7 @@ class SubastaAtomicaController extends Controller
 
         // Si el viaje tiene el teléfono demo (999888777), buscar el último número real que escribió al bot
         if (str_ends_with($soloDigitos, '999888777')) {
-            $recientes = Supabase::table('solicitudes_viaje')
-                ->orderByDesc('id')
-                ->limit(15)
-                ->get();
+            $recientes = $this->asignacion->solicitudesRecientes(15);
 
             foreach ($recientes as $r) {
                 $digitosReal = preg_replace('/\D+/', '', (string) ($r->cliente_telefono ?? ''));
@@ -333,9 +338,7 @@ class SubastaAtomicaController extends Controller
             return (int) $id;
         }
 
-        $primero = Supabase::table('conductores')->where('habilitado', true)->orderBy('id')->first();
-
-        return $primero ? (int) $primero->id : null;
+        return null;
     }
 
     /**

@@ -4,7 +4,7 @@
 @section('tema', 'claro')
 
 @section('header_centro')
-    <span class="text-xs font-headline font-bold text-slate-200">Torre de Control - KALUZ</span>
+    <span class="text-xs font-headline font-bold text-slate-200">Portal Conductor - KALUZ</span>
 @endsection
 
 @section('content')
@@ -60,7 +60,7 @@
 
     {{-- Tarjeta 4: Volver al Radar de Viajes --}}
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 text-center space-y-2.5">
-        <a href="{{ route('despacho.pwa') }}"
+        <a href="{{ route('despacho.pwa', ['conductor_id' => $conductor->id ?? null]) }}"
            class="block w-full bg-[#0A1329] hover:bg-[#132347] text-white font-headline font-bold rounded-xl py-3.5 text-sm shadow-md transition">
             Volver al Radar de Viajes
         </a>

@@ -24,7 +24,15 @@
 
 @section('content')
 <div
-    x-data="radarConductor('{{ route('despacho.api.solicitudes', ['conductor_id' => $conductor->id]) }}', '{{ csrf_token() }}', {{ (int) $conductor->id }})"
+        x-data="radarConductor(
+            '{{ route('despacho.api.solicitudes', ['conductor_id' => $conductor->id]) }}',
+            '{{ csrf_token() }}',
+            {{ (int) $conductor->id }},
+            {
+                viaje: '{{ route('despacho.viaje') }}',
+                bloqueado: '{{ route('despacho.pwa.bloqueado') }}',
+            }
+        )"
     x-init="iniciar()"
     class="space-y-4"
     x-on:visibilitychange.window="if (document.hidden) { detener(); } else { iniciar(); }"
@@ -297,7 +305,7 @@
 
 @section('scripts')
 <script>
-    function radarConductor(urlSolicitudes, csrfToken, conductorId) {
+    function radarConductor(urlSolicitudes, csrfToken, conductorId, rutas) {
         return {
             solicitudes: [],
             viajeActivo: {!! json_encode(
@@ -334,6 +342,13 @@
                 this.timer = null;
             },
 
+            urlAccion(id, accion) {
+                const url = new URL(urlSolicitudes, window.location.origin);
+                url.pathname = url.pathname.replace(/\/$/, '') + '/' + id + '/' + accion;
+                url.searchParams.set('conductor_id', conductorId);
+                return url.toString();
+            },
+
             async consultar() {
                 if (!this.enLinea) return;
                 try {
@@ -342,7 +357,7 @@
                     url.searchParams.set('conductor_id', conductorId);
                     const r = await fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
                     if (r.status === 403) {
-                        window.location = '/conductor/bloqueado?conductor_id=' + conductorId;
+                        window.location = rutas.bloqueado + '?conductor_id=' + conductorId;
                         return;
                     }
                     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -355,7 +370,7 @@
                     if (json.data.viaje_activo && !this.viajeActivo) {
                         this.viajeActivo = json.data.viaje_activo;
                         this.alertar(2);
-                        setTimeout(() => window.location = '/conductor/viaje?conductor_id=' + conductorId, 600);
+                        setTimeout(() => window.location = rutas.viaje + '?conductor_id=' + conductorId, 600);
                         return;
                     }
 
@@ -405,7 +420,7 @@
             async aceptar(s) {
                 this.enviando = s.id;
                 try {
-                    const r = await fetch(`/conductor/api/solicitudes/${s.id}/aceptar?conductor_id=${conductorId}`, {
+                    const r = await fetch(this.urlAccion(s.id, 'aceptar'), {
                         method: 'POST',
                         headers: {
                             'Accept': 'application/json',
@@ -418,7 +433,7 @@
                     const json = await r.json();
                     if (json.ok) {
                         this.alertar(2);
-                        window.location = '/conductor/viaje?conductor_id=' + conductorId;
+                        window.location = rutas.viaje + '?conductor_id=' + conductorId;
                         return;
                     }
                     this.aviso = json.mensaje || 'No se pudo aceptar el viaje.';
@@ -442,7 +457,7 @@
                 if (!this.objetivo || this.monto <= 0) return;
                 this.enviando = this.objetivo.id;
                 try {
-                    const r = await fetch(`/conductor/api/solicitudes/${this.objetivo.id}/contraoferta?conductor_id=${conductorId}`, {
+                    const r = await fetch(this.urlAccion(this.objetivo.id, 'contraoferta'), {
                         method: 'POST',
                         headers: {
                             'Accept': 'application/json',

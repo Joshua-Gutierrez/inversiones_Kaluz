@@ -20,7 +20,7 @@
 
 @section('content')
 <div
-    x-data="viajeActivo('{{ route('despacho.api.viaje.estado', ['id' => $viajeActivo->id, 'conductor_id' => $conductor->id]) }}', '{{ route('despacho.api.ubicacion', ['conductor_id' => $conductor->id]) }}', {{ $conductor->lat_actual ?? 'null' }}, {{ $conductor->lng_actual ?? 'null' }}, {{ (int) $conductor->id }})"
+        x-data="viajeActivo('{{ route('despacho.api.viaje.estado', ['id' => $viajeActivo->id, 'conductor_id' => $conductor->id]) }}', '{{ route('despacho.api.ubicacion', ['conductor_id' => $conductor->id]) }}', {{ $conductor->lat_actual ?? 'null' }}, {{ $conductor->lng_actual ?? 'null' }}, {{ (int) $conductor->id }}, '{{ route('despacho.pwa') }}')"
     x-init="iniciarGps()"
     class="space-y-4"
 >
@@ -326,7 +326,7 @@
         setTimeout(() => mapa.invalidateSize(), 200);
     }
 
-    function viajeActivo(urlEstado, urlUbicacion, latDefault, lngDefault, conductorId) {
+    function viajeActivo(urlEstado, urlUbicacion, latDefault, lngDefault, conductorId, urlRadar) {
         return {
             estado: @json($viajeActivo->estado),
             aviso: '',
@@ -425,7 +425,7 @@
                         this.mostrar('¡Listo! Estado actualizado y notificado al pasajero.', true);
                         if (nuevo === 'completado' || nuevo === 'cancelado') {
                             clearInterval(this.gpsTimer);
-                            setTimeout(() => window.location = '/conductor/radar?conductor_id=' + conductorId, 1200);
+                            setTimeout(() => window.location = urlRadar + '?conductor_id=' + conductorId, 1200);
                         }
                     } else {
                         this.mostrar(json.mensaje || 'No se pudo cambiar el estado.', false);

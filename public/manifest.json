@@ -2,7 +2,7 @@
     "name": "Taxi KALUZ Conductor",
     "short_name": "KALUZ Chofer",
     "description": "Radar de viajes para conductores de Taxi KALUZ en Huancayo. Acepta o contraoferta carreras en vivo.",
-    "start_url": "/conductor/radar",
+    "start_url": "/conductor",
     "scope": "/conductor/",
     "display": "standalone",
     "orientation": "portrait",
