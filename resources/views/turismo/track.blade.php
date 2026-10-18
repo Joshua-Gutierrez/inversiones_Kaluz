@@ -1,12 +1,13 @@
 @extends('layouts.pwa-mobile')
 
-@section('titulo', 'Rastreo GPS y Subasta en Vivo - Taxi KALUZ')
+@section('titulo', 'Seguimiento en Vivo - Taxi KALUZ')
 @section('tema', 'oscuro')
+@section('ocultar_nav', '1')
 
 @section('header_centro')
     <span class="inline-flex items-center gap-1.5 text-[11px] font-headline font-bold uppercase tracking-wide px-3 py-1 rounded-full bg-emerald-500 text-white shadow-[0_0_16px_rgba(16,185,129,0.55)]">
         <i class="ri-gps-line text-xs"></i>
-        <span>GPS ESTILO INDRIVE</span>
+        <span>RASTREO EN VIVO</span>
     </span>
 @endsection
 
@@ -39,26 +40,18 @@
         csrfToken: @js(csrf_token())
     })"
     x-init="iniciar()"
-    x-cloak
     class="space-y-3.5"
 >
-    <!-- Encabezado y controles de prueba rápida -->
+    <!-- Encabezado de ruta del pasajero -->
     <div class="flex items-center justify-between gap-2">
-        <div>
+        <div class="min-w-0">
             <h1 class="font-headline font-extrabold text-lg text-white leading-tight">
-                Seguimiento del Pasajero
+                Tu Viaje en Tiempo Real
             </h1>
-            <p class="text-[11px] text-slate-400">
+            <p class="text-xs text-slate-300 truncate mt-0.5">
                 {{ $viaje->origen_texto }} <i class="ri-arrow-right-line text-[#E31B23]"></i> {{ $viaje->destino_texto }}
             </p>
         </div>
-
-        <button type="button" @click="simularContraofertas()"
-            class="shrink-0 inline-flex items-center gap-1 bg-[#162647] hover:bg-[#1E325C] text-emerald-300 border border-emerald-500/30 rounded-xl px-2.5 py-1.5 text-[11px] font-bold transition"
-            title="Simular que varios conductores mandan contraofertas">
-            <i class="ri-auction-line text-sm"></i>
-            <span>Simular Contraofertas</span>
-        </button>
     </div>
 
     <!-- Aviso de estado -->
@@ -255,11 +248,12 @@
                 const el = document.getElementById('mapa-rastreo');
                 if (!el || typeof L === 'undefined') return;
 
-                this.mapa = L.map(el, { zoomControl: true, attributionControl: false })
+                this.mapa = L.map(el, { zoomControl: true, attributionControl: true })
                     .setView([this.clienteLat, this.clienteLng], 15);
 
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap',
                 }).addTo(this.mapa);
 
                 // 1. Marcador del Cliente (Tu ubicación en azul con pulso)
@@ -301,6 +295,18 @@
                     weight: 5,
                     opacity: 0.85,
                 }).addTo(this.mapa);
+
+                setTimeout(() => {
+                    this.mapa.invalidateSize();
+                    const bounds = L.latLngBounds([
+                        [this.clienteLat, this.clienteLng],
+                        [this.taxiLat, this.taxiLng],
+                        [cfg.destino.lat, cfg.destino.lng],
+                    ]);
+                    if (bounds.isValid()) {
+                        this.mapa.fitBounds(bounds, { padding: [36, 36], maxZoom: 16 });
+                    }
+                }, 200);
             },
 
             obtenerGpsCliente() {

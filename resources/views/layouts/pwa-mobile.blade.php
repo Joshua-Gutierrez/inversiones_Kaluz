@@ -77,9 +77,15 @@
     @else
         <header class="bg-[#0A1329] border-b border-white/10 px-4 py-3 sticky top-0 z-40">
             <div class="max-w-md mx-auto flex items-center justify-between gap-2">
-                <a href="{{ route('despacho.pwa', $navParams) }}" class="font-headline font-black text-xl tracking-wider text-white shrink-0">
-                    KALUZ
-                </a>
+                @hasSection('ocultar_nav')
+                    <span class="font-headline font-black text-xl tracking-wider text-white shrink-0">
+                        KALUZ
+                    </span>
+                @else
+                    <a href="{{ route('despacho.pwa', $navParams) }}" class="font-headline font-black text-xl tracking-wider text-white shrink-0">
+                        KALUZ
+                    </a>
+                @endif
 
                 @yield('header_centro')
 
@@ -91,7 +97,7 @@
     @endif
 
     {{-- Contenido principal mobile-first (viewport ~410px centrado en desktop) --}}
-    <main class="flex-1 overflow-y-auto px-4 pt-4 pb-28 max-w-md w-full mx-auto">
+    <main class="flex-1 overflow-y-auto px-4 pt-4 @hasSection('ocultar_nav') pb-6 @else pb-28 @endif max-w-md w-full mx-auto">
         @yield('content')
     </main>
 
