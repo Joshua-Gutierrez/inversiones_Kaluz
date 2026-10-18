@@ -350,15 +350,43 @@ class WhatsAppController extends Controller
                     return response('EVENT_RECEIVED', 200);
                 }
 
-                // OPCIÓN 1 o A: Servicio Principal de Taxi Urbano
-                $esOpcionTaxi = (bool) preg_match('/^(?:1|a|opci[oó]n\s*1|opci[oó]n\s*a|1️⃣|pedir\s+taxi|quiero\s+un\s+taxi|quiero\s+taxi|servicio\s+de\s+taxi)$/iu', $cuerpoTexto);
+                // OPCIÓN 1 o A: Servicio Principal de Taxi Urbano (Pregunta automáticamente desde dónde quiere el taxi)
+                $esOpcionTaxi = (bool) preg_match('/^(?:1|a|opci[oó]n\s*1|opci[oó]n\s*a|1️⃣|pedir\s+taxi|quiero\s+un\s+taxi|quiero\s+taxi|servicio\s+de\s+taxi|taxi)$/iu', $cuerpoTexto);
                 if ($esOpcionTaxi) {
+                    // Cancelar cualquier solicitud pendiente o en borrador anterior para iniciar limpio
+                    Supabase::table('solicitudes_viaje')
+                        ->where('cliente_telefono', $remitente)
+                        ->whereIn('estado', ['pendiente', 'en_subasta'])
+                        ->update([
+                            'estado' => 'cancelado',
+                            'updated_at' => now()->toIso8601String(),
+                        ]);
+
+                    // Guardar borrador paso a paso en Supabase
+                    Supabase::table('solicitudes_viaje')->insert([
+                        'cliente_nombre' => $nombreContacto,
+                        'cliente_telefono' => $remitente,
+                        'origen_texto' => 'POR_DEFINIR',
+                        'origen_lat' => -12.0651,
+                        'origen_lng' => -75.2049,
+                        'destino_texto' => 'POR_DEFINIR',
+                        'destino_lat' => -12.0675,
+                        'destino_lng' => -75.2049,
+                        'tipo_servicio' => 'urbano',
+                        'precio_sugerido' => 6.00,
+                        'oferta_cliente' => 6.00,
+                        'estado' => 'pendiente',
+                        'created_at' => now()->toIso8601String(),
+                        'updated_at' => now()->toIso8601String(),
+                    ]);
+
                     $this->enviarMensajeWhatsApp(
                         $remitente,
-                        "🚕 *¡Servicio Principal de Taxi KALUZ Huancayo!*\n".
-                        "Nuestras unidades con GPS en vivo están listas cerca de ti las 24 horas.\n\n".
-                        "📍 *Escríbeme en un solo mensaje desde dónde y hacia dónde vas:*\n".
-                        '_(Ejemplo: De Universidad Continental a Real Plaza)_'
+                        "🚕 *¡Perfecto! Vamos a pedir tu Taxi KALUZ*\n\n".
+                        "📍 *¿Desde dónde quieres el taxi?*\n".
+                        "Escríbeme tu punto de partida o recojo actual:\n".
+                        "👉 _Por ejemplo: Real Plaza, Parque Constitución, El Tambo, etc._\n\n".
+                        "💡 _O si prefieres, escribe directamente tu ruta completa: *De [Origen] a [Destino]*._"
                     );
 
                     return response('EVENT_RECEIVED', 200);
@@ -526,6 +554,79 @@ class WhatsAppController extends Controller
                     return response('EVENT_RECEIVED', 200);
                 }
 
+                // FLUJO 1 - Paso 2A (Conversacional): Si hay un borrador pendiente donde falta origen o destino
+                $solicitudBorrador = Supabase::table('solicitudes_viaje')
+                    ->where('cliente_telefono', $remitente)
+                    ->whereIn('estado', ['pendiente', 'en_subasta'])
+                    ->orderByDesc('id')
+                    ->first();
+
+                if ($solicitudBorrador && ! $esSaludoSimple) {
+                    // Si falta el Origen (el usuario acaba de enviar 1 o pedir taxi y responde con su punto de partida)
+                    if ($solicitudBorrador->origen_texto === 'POR_DEFINIR') {
+                        $origenLimpio = ucfirst(trim(preg_replace('/^(?:desde\s*:?\s*|estoy\s+en\s+|en\s+|de\s+|punto\s*:?\s*)/iu', '', $cuerpoTexto), " ,.:\n\r"));
+                        if ($origenLimpio !== '') {
+                            $geocoder = app(GeocodingService::class);
+                            $coordOrigen = $geocoder->coordenadas($origenLimpio);
+
+                            Supabase::table('solicitudes_viaje')->where('id', $solicitudBorrador->id)->update([
+                                'origen_texto' => $origenLimpio,
+                                'origen_lat' => $coordOrigen['lat'],
+                                'origen_lng' => $coordOrigen['lng'],
+                                'updated_at' => now()->toIso8601String(),
+                            ]);
+
+                            $this->enviarMensajeWhatsApp(
+                                $remitente,
+                                "📍 *Punto de recojo registrado:* {$origenLimpio}\n\n".
+                                "🏁 *¿Hacia dónde te diriges?*\n".
+                                "Escríbeme tu destino (Ejemplo: *Parque de la Identidad*, *Open Plaza*, *UPLA*, etc.)."
+                            );
+
+                            return response('EVENT_RECEIVED', 200);
+                        }
+                    }
+
+                    // Si falta el Destino (ya tenemos el origen y ahora el usuario indica hacia dónde va)
+                    if ($solicitudBorrador->origen_texto !== 'POR_DEFINIR' && $solicitudBorrador->destino_texto === 'POR_DEFINIR') {
+                        $destinoLimpio = ucfirst(trim(preg_replace('/^(?:a\s*:?\s*|hacia\s+|hasta\s+|para\s+|voy\s+a\s+|destino\s*:?\s*)/iu', '', $cuerpoTexto), " ,.:\n\r"));
+                        if ($destinoLimpio !== '') {
+                            $geocoder = app(GeocodingService::class);
+                            $coordDestino = $geocoder->coordenadas($destinoLimpio);
+                            $precioSugerido = $geocoder->precioSugerido(
+                                (float) $solicitudBorrador->origen_lat,
+                                (float) $solicitudBorrador->origen_lng,
+                                $coordDestino['lat'],
+                                $coordDestino['lng']
+                            );
+
+                            Supabase::table('solicitudes_viaje')->where('id', $solicitudBorrador->id)->update([
+                                'destino_texto' => $destinoLimpio,
+                                'destino_lat' => $coordDestino['lat'],
+                                'destino_lng' => $coordDestino['lng'],
+                                'precio_sugerido' => $precioSugerido,
+                                'oferta_cliente' => $precioSugerido,
+                                'updated_at' => now()->toIso8601String(),
+                            ]);
+
+                            $sugeridoFmt = number_format($precioSugerido, 2, '.', '');
+                            $ejemploMenor = number_format(max(5.0, $precioSugerido - 1.0), 0, '.', '');
+
+                            $this->enviarMensajeWhatsApp(
+                                $remitente,
+                                "🛣️ *¡Ruta registrada!*\n".
+                                "📍 *Origen:* {$solicitudBorrador->origen_texto}\n".
+                                "🏁 *Destino:* {$destinoLimpio}\n".
+                                "💡 *Tarifa sugerida:* S/ {$sugeridoFmt}\n\n".
+                                "💰 *¿Cuánto estás dispuesto a pagar por este viaje?*\n".
+                                "Escribe tu oferta en soles (Ejemplo: *{$ejemploMenor}* o *S/ {$sugeridoFmt}*)."
+                            );
+
+                            return response('EVENT_RECEIVED', 200);
+                        }
+                    }
+                }
+
                 // FLUJO 1 - Paso 1: El Saludo y la Solicitud (cuando el cliente escribe "Hola" o cualquier primer mensaje)
                 $this->enviarMensajeWhatsApp(
                     $remitente,
@@ -579,11 +680,30 @@ class WhatsAppController extends Controller
     }
 
     /**
+     * Resuelve el token de Meta WhatsApp Cloud API dinámicamente:
+     * 1. Consulta la tabla usuarios en Supabase (usuario = 'meta_wa_token') actualizada desde la Torre de Control.
+     * 2. Fallback a la variable de entorno META_WA_BEARER_TOKEN.
+     */
+    public static function obtenerTokenMeta(): string
+    {
+        try {
+            $fila = Supabase::table('usuarios')->where('usuario', 'meta_wa_token')->first();
+            if ($fila && ! empty($fila->password)) {
+                return trim((string) $fila->password);
+            }
+        } catch (\Throwable) {
+            // Ignorar y seguir al fallback
+        }
+
+        return (string) env('META_WA_BEARER_TOKEN', '');
+    }
+
+    /**
      * Consulta https://graph.facebook.com/v20.0/{media_id} para obtener la URL de descarga.
      */
     protected function obtenerUrlMediaMeta(string $mediaId): ?string
     {
-        $token = (string) env('META_WA_BEARER_TOKEN', '');
+        $token = static::obtenerTokenMeta();
 
         $response = Http::withoutVerifying()
             ->withToken($token)
@@ -602,7 +722,7 @@ class WhatsAppController extends Controller
      */
     protected function descargarBinarioMeta(string $mediaUrl): ?string
     {
-        $token = (string) env('META_WA_BEARER_TOKEN', '');
+        $token = static::obtenerTokenMeta();
 
         $response = Http::withoutVerifying()
             ->withToken($token)
@@ -728,7 +848,7 @@ class WhatsAppController extends Controller
     protected function enviarMensajeWhatsApp(string $destinatario, string $texto): bool
     {
         $phoneNumberId = (string) env('META_WA_PHONE_NUMBER_ID', '1387228187808934');
-        $token = (string) env('META_WA_BEARER_TOKEN', '');
+        $token = static::obtenerTokenMeta();
 
         if ($token === '' || $phoneNumberId === '') {
             return false;
@@ -831,10 +951,13 @@ class WhatsAppController extends Controller
 
             // Construir URL pública HTTPS de la foto del paquete para WhatsApp Cloud API
             $imagenRaw = trim((string) ($paquete->imagen_url ?? ''));
-            if (str_starts_with($imagenRaw, 'https://')) {
+            if (str_starts_with($imagenRaw, 'data:image/')) {
+                $urlImagen = "{$baseUrl}/turismo/imagen/{$idPaquete}.jpg";
+            } elseif (str_starts_with($imagenRaw, 'https://') && ! str_contains($imagenRaw, '/storage/turismo/')) {
                 $urlImagen = $imagenRaw;
             } else {
-                $urlImagen = "{$baseUrl}/turismo/imagen/{$idPaquete}.jpg";
+                // Imagen estática servida directamente por el CDN de Vercel en milisegundos
+                $urlImagen = "{$baseUrl}/images/turismo-huancayo.jpg";
             }
 
             $enviadoConFoto = $this->enviarImagenWhatsApp($destinatario, $urlImagen, $caption);
@@ -938,7 +1061,7 @@ class WhatsAppController extends Controller
     protected function enviarImagenWhatsApp(string $destinatario, string $urlImagen, string $caption): bool
     {
         $phoneNumberId = (string) env('META_WA_PHONE_NUMBER_ID', '1387228187808934');
-        $token = (string) env('META_WA_BEARER_TOKEN', '');
+        $token = static::obtenerTokenMeta();
 
         if ($token === '' || $phoneNumberId === '' || $urlImagen === '') {
             return false;

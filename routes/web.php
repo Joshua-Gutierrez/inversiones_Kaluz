@@ -335,6 +335,37 @@ Route::get('/api/torre-control/flota', function () {
     ]);
 })->name('dashboard.api.flota');
 
+Route::post('/api/torre-control/whatsapp-token', function (Request $request) {
+    $token = trim((string) $request->input('token', ''));
+    if ($token === '') {
+        return response()->json(['ok' => false, 'mensaje' => 'El token no puede estar vacío.'], 422);
+    }
+
+    try {
+        $existe = Supabase::table('usuarios')->where('usuario', 'meta_wa_token')->first();
+        if ($existe) {
+            Supabase::table('usuarios')->where('usuario', 'meta_wa_token')->update([
+                'password' => $token,
+                'nombre' => 'Token Meta Actualizado '.now('America/Lima')->format('d/m/Y H:i'),
+            ]);
+        } else {
+            Supabase::table('usuarios')->insert([
+                'usuario' => 'meta_wa_token',
+                'password' => $token,
+                'nombre' => 'Token Meta Actualizado '.now('America/Lima')->format('d/m/Y H:i'),
+            ]);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'mensaje' => 'Token de WhatsApp actualizado exitosamente en Supabase.',
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json(['ok' => false, 'mensaje' => 'Error al guardar token: '.$e->getMessage()], 500);
+    }
+})->name('dashboard.api.whatsapp-token');
+
+
 Route::get('/general', function () {
     return view('general.index');
 })->name('general.index');

@@ -1,1 +1,1 @@
-@include('layouts.torre-control')
+@extends('layouts.torre-control')

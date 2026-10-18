@@ -14,9 +14,9 @@
                     Catálogo de rutas turísticas en el Valle del Mantaro con asignación prioritaria a Combis y Autos de Inversiones Kaluz
                 </p>
             </div>
-            <div class="flex items-center gap-2.5">
+            <div class="flex items-center gap-2.5 w-full sm:w-auto">
                 <a href="{{ route('turismo.create', [], false) }}"
-                   class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#08142C] hover:bg-[#13264E] text-white font-headline font-bold text-xs shadow-sm transition">
+                   class="w-full sm:w-auto justify-center inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#08142C] hover:bg-[#13264E] text-white font-headline font-bold text-xs shadow-sm transition">
                     <i class="ri-add-line text-base"></i>
                     <span>Nuevo Paquete Turístico</span>
                 </a>
@@ -145,15 +145,15 @@
                                 </p>
                             </div>
 
-                            <div class="flex items-center gap-2">
+                            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
                                 <a href="{{ route('turismo.rastreo', ['id' => $paquete->id]) }}"
-                                   class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-[#08142C] hover:bg-slate-50 transition"
+                                   class="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl border border-slate-200 text-[11px] sm:text-xs font-bold text-[#08142C] hover:bg-slate-50 transition"
                                    title="Ver Mapa GPS del Recorrido">
                                     <i class="ri-map-pin-2-fill text-[#D91B23]"></i>
                                     <span>Mapa GPS</span>
                                 </a>
                                 <a href="{{ route('turismo.edit', ['id' => $paquete->id], false) }}"
-                                   class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#08142C] hover:bg-[#13264E] text-white text-xs font-bold transition shadow-xs">
+                                   class="inline-flex items-center gap-1 sm:gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-[#08142C] hover:bg-[#13264E] text-white text-[11px] sm:text-xs font-bold transition shadow-xs">
                                     <i class="ri-edit-2-line"></i>
                                     <span>Editar</span>
                                 </a>

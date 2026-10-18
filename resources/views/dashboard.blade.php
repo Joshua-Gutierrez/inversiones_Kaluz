@@ -44,110 +44,113 @@
     </div>
 
     <!-- Grid Principal: Izquierda (KPIs + Mapa GPS 8 cols) | Derecha (Validación Yape + Solicitudes WhatsApp 4 cols) -->
-    <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-5 items-start">
 
         <!-- Columna Izquierda (8/12): 4 KPIs + Mapa en Vivo de Huancayo + Panel de Unidades GPS -->
         <div class="xl:col-span-8 space-y-4">
-            <!-- 4 Tarjetas KPI -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+            <!-- 4 Tarjetas KPI Responsivas -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
                 <!-- KPI 1: Viajes Activos -->
-                <div class="bg-white/95 rounded-2xl p-4 border border-white shadow-sm">
-                    <p class="text-xs font-medium text-slate-600 leading-snug">Viajes Activos</p>
-                    <p id="kpi-viajes-activos" class="font-headline font-black text-3xl text-[#08142C] mt-2">
+                <div class="bg-white/95 rounded-2xl p-3 sm:p-4 border border-white shadow-sm">
+                    <p class="text-[11px] sm:text-xs font-medium text-slate-600 leading-snug">Viajes Activos</p>
+                    <p id="kpi-viajes-activos" class="font-headline font-black text-2xl sm:text-3xl text-[#08142C] mt-1 sm:mt-2">
                         {{ $viajesActivos > 0 ? $viajesActivos : 1 }}
                     </p>
-                    <p class="text-[11px] text-emerald-600 font-semibold mt-1 flex items-center gap-1">
+                    <p class="text-[10px] sm:text-[11px] text-emerald-600 font-semibold mt-0.5 sm:mt-1 flex items-center gap-1">
                         <i class="ri-radar-line"></i>
-                        <span id="kpi-en-servicio-label">{{ $enServicioAhora }} en carrera ahora</span>
+                        <span id="kpi-en-servicio-label">{{ $enServicioAhora }} en carrera</span>
                     </p>
                 </div>
 
                 <!-- KPI 2: Conductores Habilitados -->
-                <div class="bg-white/95 rounded-2xl p-4 border border-white shadow-sm">
-                    <p class="text-xs font-medium text-slate-600 leading-snug">Flota en Servicio<br>(GPS PWA Activo)</p>
-                    <p id="kpi-habilitados" class="font-headline font-black text-3xl text-[#08142C] mt-1">
+                <div class="bg-white/95 rounded-2xl p-3 sm:p-4 border border-white shadow-sm">
+                    <p class="text-[11px] sm:text-xs font-medium text-slate-600 leading-snug">Flota en Servicio<br class="hidden sm:inline">(GPS PWA)</p>
+                    <p id="kpi-habilitados" class="font-headline font-black text-2xl sm:text-3xl text-[#08142C] mt-1">
                         {{ $totalHabilitados }}
                     </p>
-                    <p class="text-[11px] text-slate-500 mt-0.5">De {{ $conductores->count() }} unidades registradas</p>
+                    <p class="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">De {{ $conductores->count() }} unidades</p>
                 </div>
 
                 <!-- KPI 3: Recaudación Diaria -->
-                <div class="bg-white/95 rounded-2xl p-4 border border-white shadow-sm">
-                    <p class="text-xs font-medium text-slate-600 leading-snug">Recaudación Diaria</p>
-                    <p class="font-headline font-black text-2xl text-[#08142C] mt-1">
+                <div class="bg-white/95 rounded-2xl p-3 sm:p-4 border border-white shadow-sm">
+                    <p class="text-[11px] sm:text-xs font-medium text-slate-600 leading-snug">Recaudación Diaria</p>
+                    <p class="font-headline font-black text-xl sm:text-2xl text-[#08142C] mt-1">
                         S/ {{ number_format($recaudacion, 2) }}
                     </p>
-                    <p class="text-[11px] text-slate-500">(Cuotas S/ 1.00)</p>
-                    <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mt-2">
+                    <p class="text-[10px] sm:text-[11px] text-slate-500">(Cuotas S/ 1.00)</p>
+                    <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1.5">
                         <div class="h-full bg-[#D91B23] rounded-full" style="width: 78%"></div>
                     </div>
                 </div>
 
                 <!-- KPI 4: Tiempo Promedio de Asignación -->
-                <div class="bg-white/95 rounded-2xl p-4 border border-white shadow-sm">
-                    <p class="text-xs font-medium text-slate-600 leading-snug">Frecuencia GPS<br>PWA Conductor</p>
-                    <p class="font-headline font-black text-3xl text-[#08142C] mt-1">4 seg</p>
-                    <p class="text-[11px] text-emerald-600 font-semibold mt-0.5 flex items-center gap-1">
+                <div class="bg-white/95 rounded-2xl p-3 sm:p-4 border border-white shadow-sm">
+                    <p class="text-[11px] sm:text-xs font-medium text-slate-600 leading-snug">Frecuencia GPS<br class="hidden sm:inline">PWA Conductor</p>
+                    <p class="font-headline font-black text-2xl sm:text-3xl text-[#08142C] mt-1">4 seg</p>
+                    <p class="text-[10px] sm:text-[11px] text-emerald-600 font-semibold mt-0.5 flex items-center gap-1">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span> Sincronizado
                     </p>
                 </div>
             </div>
 
             <!-- Mapa GPS en Vivo de Huancayo (OpenStreetMap + Telemetría en Tiempo Real de la Flota PWA) -->
-            <div id="mapa-en-vivo" class="relative bg-white rounded-3xl p-2 border border-white shadow-md overflow-hidden">
-                <div id="mapa-torre-control" class="w-full h-[460px] rounded-2xl z-0"></div>
-
-                <!-- Filtros Flotantes Superiores (Todas / Haciendo Servicio / Radar GPS) -->
-                <div class="absolute top-5 left-14 z-[400] flex flex-wrap items-center gap-1.5 bg-white/95 backdrop-blur-xs p-1.5 rounded-xl shadow-md border border-slate-200/80 text-xs">
-                    <button type="button" onclick="window.filtrarMapaKaluz('todos')" id="btn-filtro-todos"
-                        class="px-3 py-1.5 rounded-lg font-bold transition bg-[#08142C] text-white">
-                        Todas (<span id="count-flota-todas">{{ count($flotaEnVivo) }}</span>)
-                    </button>
-                    <button type="button" onclick="window.filtrarMapaKaluz('servicio')" id="btn-filtro-servicio"
-                        class="px-3 py-1.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span>En Servicio (<span id="count-flota-servicio">{{ $enServicioAhora }}</span>)</span>
-                    </button>
-                    <button type="button" onclick="window.filtrarMapaKaluz('radar')" id="btn-filtro-radar"
-                        class="px-3 py-1.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-[#D91B23]"></span>
-                        <span>Disponibles GPS (<span id="count-flota-radar">{{ max(0, $totalHabilitados - $enServicioAhora) }}</span>)</span>
-                    </button>
-                </div>
-
-                <!-- Botón flotante superior derecho (Centrar Huancayo) -->
-                <div class="absolute top-5 right-5 z-[400] flex items-center gap-2">
-                    <button type="button" onclick="window.centrarMapaKaluz && window.centrarMapaKaluz()"
-                        class="px-3 h-10 rounded-xl bg-white shadow-md border border-slate-200 flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-[#08142C] transition"
-                        title="Ver toda la flota en Huancayo">
-                        <i class="ri-focus-3-line text-base text-[#D91B23]"></i>
-                        <span>Centrar Flota</span>
-                    </button>
-                </div>
-
-                <!-- Leyenda flotante inferior -->
-                <div class="absolute bottom-5 left-5 right-5 z-[400] flex flex-wrap items-center justify-between gap-2 pointer-events-none">
-                    <div class="pointer-events-auto bg-white/95 backdrop-blur-xs rounded-xl px-3.5 py-2 shadow-md border border-slate-200/80 flex flex-wrap items-center gap-4 text-xs font-medium text-slate-700">
-                        <span class="flex items-center gap-1.5">
-                            <span class="w-3 h-3 rounded-full bg-[#08142C] inline-block"></span> Central KALUZ
-                        </span>
-                        <span class="flex items-center gap-1.5">
-                            <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block animate-pulse"></span> En Carrera / Servicio
-                        </span>
-                        <span class="flex items-center gap-1.5">
-                            <span class="w-3 h-3 rounded-full bg-[#D91B23] inline-block"></span> En Radar PWA (GPS)
-                        </span>
-                        <span class="flex items-center gap-1.5">
-                            <span class="w-3 h-3 rounded-full bg-slate-400 inline-block"></span> Bloqueado
-                        </span>
-                        <a href="{{ route('despacho.demo.crear-solicitud') }}" class="text-[#D91B23] font-bold hover:underline flex items-center gap-1">
-                            <i class="ri-add-circle-line"></i> Simular Viaje
-                        </a>
+            <div id="mapa-en-vivo" class="bg-white rounded-3xl p-2.5 sm:p-3 border border-white shadow-md space-y-2.5">
+                <!-- Toolbar Responsiva de Filtros y Centrado del Mapa -->
+                <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50/95 p-1.5 sm:p-2 rounded-2xl border border-slate-200/80 text-xs">
+                    <div class="flex flex-wrap items-center gap-1 sm:gap-1.5">
+                        <button type="button" onclick="window.filtrarMapaKaluz('todos')" id="btn-filtro-todos"
+                            class="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg font-bold transition bg-[#08142C] text-white text-[11px] sm:text-xs">
+                            Todas (<span id="count-flota-todas">{{ count($flotaEnVivo) }}</span>)
+                        </button>
+                        <button type="button" onclick="window.filtrarMapaKaluz('servicio')" id="btn-filtro-servicio"
+                            class="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-200/60 flex items-center gap-1 text-[11px] sm:text-xs">
+                            <span class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>En Servicio (<span id="count-flota-servicio">{{ $enServicioAhora }}</span>)</span>
+                        </button>
+                        <button type="button" onclick="window.filtrarMapaKaluz('radar')" id="btn-filtro-radar"
+                            class="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-200/60 flex items-center gap-1 text-[11px] sm:text-xs">
+                            <span class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-[#D91B23]"></span>
+                            <span>Radar (<span id="count-flota-radar">{{ max(0, $totalHabilitados - $enServicioAhora) }}</span>)</span>
+                        </button>
                     </div>
 
-                    <div class="pointer-events-auto bg-[#08142C]/95 text-white rounded-xl px-3 py-2 shadow-md text-[11px] font-semibold flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                        <span id="estado-telemetria-mapa">GPS PWA en vivo</span>
+                    <div class="flex items-center gap-1.5 ml-auto">
+                        <button type="button" onclick="window.centrarMapaKaluz && window.centrarMapaKaluz()"
+                            class="px-2.5 sm:px-3 h-8 sm:h-9 rounded-xl bg-white shadow-xs border border-slate-200 flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-slate-700 hover:text-[#08142C] transition"
+                            title="Ver toda la flota en Huancayo">
+                            <i class="ri-focus-3-line text-sm text-[#D91B23]"></i>
+                            <span>Centrar Flota</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Contenedor Leaflet OpenStreetMap con Altura Adaptativa Móvil -->
+                <div class="relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner">
+                    <div id="mapa-torre-control" class="w-full h-[320px] sm:h-[460px] z-0"></div>
+                </div>
+
+                <!-- Leyenda Responsiva Inferior -->
+                <div class="flex flex-wrap items-center justify-between gap-2 p-2 bg-slate-50/95 rounded-2xl border border-slate-200/80 text-[11px] text-slate-700">
+                    <div class="flex flex-wrap items-center gap-3 sm:gap-4 font-medium">
+                        <span class="flex items-center gap-1">
+                            <span class="w-2.5 h-2.5 rounded-full bg-[#08142C] inline-block"></span> Central
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span> En Carrera
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <span class="w-2.5 h-2.5 rounded-full bg-[#D91B23] inline-block"></span> Radar PWA
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <span class="w-2.5 h-2.5 rounded-full bg-slate-400 inline-block"></span> Candado
+                        </span>
+                    </div>
+
+                    <div class="flex items-center gap-2 ml-auto">
+                        <span class="bg-[#08142C] text-white rounded-lg px-2.5 py-1 text-[10px] font-semibold flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                            <span id="estado-telemetria-mapa">GPS en vivo</span>
+                        </span>
                     </div>
                 </div>
             </div>

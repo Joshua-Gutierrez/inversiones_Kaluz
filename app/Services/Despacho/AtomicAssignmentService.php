@@ -106,7 +106,9 @@ class AtomicAssignmentService
             $query->orderByRaw("CASE WHEN tipo_servicio = 'turismo' THEN 0 ELSE 1 END");
         }
 
-        $resultados = $query->orderBy('id', 'desc')->get();
+        $resultados = $query->orderBy('id', 'desc')->get()
+            ->reject(fn ($s) => ($s->origen_texto ?? '') === 'POR_DEFINIR' || ($s->destino_texto ?? '') === 'POR_DEFINIR')
+            ->values();
 
         if ($esFlotaPropia) {
             return $resultados->sortBy(fn ($s) => $s->tipo_servicio === 'turismo' ? 0 : 1)->values();

@@ -126,11 +126,11 @@
     <!-- Grid Principal: Izquierda (Filtros + Tabla 9 cols) | Derecha (Acciones de Control Rápido + Documentos 3 cols) -->
     <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
 
-        <!-- Columna Izquierda (9/12): Barra de Filtros + Tabla de Asociados -->
+        <!-- Columna Izquierda (9/12): Barra de Filtros + Tabla/Tarjetas de Asociados -->
         <div class="xl:col-span-9 space-y-3.5">
-            <!-- Barra de Filtros -->
-            <div class="flex flex-wrap items-center gap-3">
-                <div class="relative flex-1 min-w-[220px]">
+            <!-- Barra de Filtros Adaptativa -->
+            <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 sm:gap-3">
+                <div class="relative flex-1 min-w-[200px]">
                     <i class="ri-search-line absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
                     <input
                         type="search"
@@ -140,36 +140,36 @@
                     >
                 </div>
 
-                <!-- Selector de Estado -->
-                <div class="flex items-center gap-1 bg-white/95 rounded-xl px-2 py-1.5 border border-white shadow-xs text-xs">
-                    <span class="text-slate-500 font-medium px-1">Estado:</span>
+                <!-- Selector de Estado con Scroll Horizontal en Celular -->
+                <div class="flex items-center gap-1 bg-white/95 rounded-xl p-1 sm:px-2 sm:py-1.5 border border-white shadow-xs text-xs overflow-x-auto">
+                    <span class="text-slate-500 font-medium px-1 text-[11px] hidden sm:inline">Estado:</span>
                     <button type="button" @click="filtroEstado = 'todos'"
-                        class="px-2.5 py-1 rounded-lg font-semibold transition"
+                        class="px-2.5 py-1 rounded-lg font-semibold transition shrink-0 text-[11px] sm:text-xs"
                         :class="filtroEstado === 'todos' ? 'bg-[#DCE6F2] text-[#08142C]' : 'text-slate-600 hover:bg-slate-100'">
                         Todos
                     </button>
                     <button type="button" @click="filtroEstado = 'habilitados'"
-                        class="px-2.5 py-1 rounded-lg font-semibold transition"
+                        class="px-2.5 py-1 rounded-lg font-semibold transition shrink-0 text-[11px] sm:text-xs"
                         :class="filtroEstado === 'habilitados' ? 'bg-emerald-100 text-emerald-800' : 'text-slate-600 hover:bg-slate-100'">
                         Habilitados
                     </button>
                     <button type="button" @click="filtroEstado = 'bloqueados'"
-                        class="px-2.5 py-1 rounded-lg font-semibold transition"
+                        class="px-2.5 py-1 rounded-lg font-semibold transition shrink-0 text-[11px] sm:text-xs"
                         :class="filtroEstado === 'bloqueados' ? 'bg-red-100 text-red-800' : 'text-slate-600 hover:bg-slate-100'">
                         Bloqueados
                     </button>
                     <button type="button" @click="filtroEstado = 'documentos'"
-                        class="px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1"
+                        class="px-2.5 py-1 rounded-lg font-semibold transition flex items-center gap-1 shrink-0 text-[11px] sm:text-xs"
                         :class="filtroEstado === 'documentos' ? 'bg-amber-100 text-amber-900' : 'text-slate-600 hover:bg-slate-100'">
                         <i class="ri-file-warning-line text-amber-600"></i>
-                        <span>SOAT / Licencias</span>
+                        <span>SOAT/Docs</span>
                     </button>
                 </div>
 
                 <!-- Dropdown Flota -->
                 <div class="relative">
                     <select x-model="filtroFlota"
-                        class="bg-white/95 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-700 border border-white shadow-xs focus:outline-none">
+                        class="w-full sm:w-auto bg-white/95 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-700 border border-white shadow-xs focus:outline-none">
                         <option value="todas">Ruta/Zona: Todas</option>
                         <option value="propia_combi">Flota Propia (Combis)</option>
                         <option value="propia_auto">Flota Propia (Autos)</option>
@@ -178,8 +178,78 @@
                 </div>
             </div>
 
-            <!-- Tabla del Padrón -->
-            <div class="bg-white/95 rounded-3xl border border-white shadow-sm overflow-hidden">
+            <!-- Vista Móvil: Tarjetas Táctiles para Celulares (md:hidden) -->
+            <div class="md:hidden space-y-3">
+                <template x-for="c in filtrados" :key="'card-' + c.id">
+                    <div class="bg-white/95 rounded-2xl p-4 border border-white shadow-sm space-y-3 transition"
+                         :class="seleccionado && seleccionado.id === c.id ? 'ring-2 ring-[#08142C]' : ''">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-[#08142C] to-[#1E3A8A] text-white flex items-center justify-center font-headline font-bold text-sm shrink-0">
+                                    <span x-text="c.nombre.charAt(0)"></span>
+                                </div>
+                                <div>
+                                    <p class="font-headline font-bold text-sm text-[#08142C]" x-text="c.nombre"></p>
+                                    <p class="text-[11px] text-slate-500 font-mono">DNI: <span x-text="c.dni"></span> • <span x-text="c.placa"></span></p>
+                                    <p class="text-[11px] text-slate-500" x-text="c.modelo"></p>
+                                </div>
+                            </div>
+                            <span class="font-headline font-black text-xs px-2.5 py-1 rounded-lg"
+                                  :class="c.habilitado ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'"
+                                  x-text="c.habilitado ? 'Habilitado' : 'Debe S/ ' + c.deuda.toFixed(2)">
+                            </span>
+                        </div>
+
+                        <!-- Semáforo Vencimientos Documentos -->
+                        <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-200/70 text-[11px] space-y-1">
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-600 flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full" :class="c.docs.soat.estado === 'vencido' ? 'bg-[#D91B23]' : (c.docs.soat.estado === 'por_vencer' ? 'bg-amber-500' : 'bg-emerald-500')"></span>
+                                    SOAT:
+                                </span>
+                                <span class="font-semibold" :class="c.docs.soat.estado === 'vencido' ? 'text-[#D91B23]' : 'text-slate-700'" x-text="c.docs.soat.vence"></span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-600 flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full" :class="c.docs.licencia.estado === 'por_vencer' ? 'bg-amber-500' : 'bg-emerald-500'"></span>
+                                    Licencia:
+                                </span>
+                                <span class="font-semibold text-slate-700" x-text="c.docs.licencia.vence"></span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-600 flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full" :class="c.docs.revision.estado === 'vencido' ? 'bg-[#D91B23]' : (c.docs.revision.estado === 'por_vencer' ? 'bg-amber-500' : 'bg-emerald-500')"></span>
+                                    Rev. Técnica:
+                                </span>
+                                <span class="font-semibold text-slate-700" x-text="c.docs.revision.vence"></span>
+                            </div>
+                        </div>
+
+                        <!-- Botones de Acción Móvil -->
+                        <div class="flex items-center justify-between pt-1 gap-2">
+                            <button type="button"
+                                @click="seleccionado = c; document.getElementById('panel-control-rapido')?.scrollIntoView({ behavior: 'smooth' })"
+                                class="flex-1 bg-[#08142C] text-white py-2 px-3 rounded-xl text-xs font-headline font-bold text-center">
+                                Gestionar Conductor
+                            </button>
+
+                            <form :action="'/finanzas/conductor/' + c.id + '/candado'" method="POST" class="shrink-0">
+                                @csrf
+                                <input type="hidden" name="accion" value="toggle">
+                                <button type="submit"
+                                    class="py-2 px-3 rounded-xl text-xs font-bold border transition flex items-center gap-1"
+                                    :class="c.habilitado ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-red-50 border-red-200 text-[#D91B23]'">
+                                    <i :class="c.habilitado ? 'ri-lock-unlock-line text-emerald-600' : 'ri-lock-fill text-[#D91B23]'"></i>
+                                    <span x-text="c.habilitado ? 'Bloquear' : 'Desbloquear'"></span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Tabla del Padrón (hidden md:block para Escritorio y Tablets) -->
+            <div class="hidden md:block bg-white/95 rounded-3xl border border-white shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse text-xs">
                         <thead>
@@ -306,8 +376,8 @@
                                                    :class="c.habilitado ? 'ri-lock-unlock-fill text-[#08142C]' : 'ri-lock-fill text-[#D91B23]'"></i>
                                             </div>
                                             <span class="text-[9px] font-bold tracking-tight"
-                                                  :class="c.habilitado ? 'text-slate-500' : 'text-[#D91B23] uppercase'"
-                                                  x-text="c.habilitado ? 'Ver detalles' : 'CANDADO ACTIVADO'">
+                                                   :class="c.habilitado ? 'text-slate-500' : 'text-[#D91B23] uppercase'"
+                                                   x-text="c.habilitado ? 'Ver detalles' : 'CANDADO ACTIVADO'">
                                             </span>
                                         </form>
                                     </td>
@@ -320,7 +390,7 @@
         </div>
 
         <!-- Columna Derecha (3/12): Acciones de Control Rápido + Renovación Documentaria -->
-        <div class="xl:col-span-3">
+        <div class="xl:col-span-3" id="panel-control-rapido">
             <template x-if="seleccionado">
                 <div class="bg-white/95 rounded-3xl p-5 border border-white shadow-sm space-y-4 sticky top-4">
                     <h2 class="font-headline font-bold text-base text-[#08142C] leading-snug">

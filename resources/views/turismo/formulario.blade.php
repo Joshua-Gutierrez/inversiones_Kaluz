@@ -52,5 +52,4 @@
             <div class="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><a href="{{ route('turismo.index', [], false) }}" class="rounded-xl px-5 py-3 text-center font-bold text-slate-700">Cancelar</a><button type="submit" class="rounded-xl bg-[#E31B23] px-5 py-3 font-bold text-white shadow-md hover:bg-red-700">{{ $paquete ? 'Guardar cambios' : 'Crear plan' }}</button></div>
         </form>
     </div>
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 @endsection

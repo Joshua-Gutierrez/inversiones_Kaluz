@@ -38,21 +38,21 @@
             </p>
         </div>
 
-        <div class="flex items-center gap-2 bg-white/95 p-1.5 rounded-xl border border-white shadow-xs text-xs">
+        <div class="w-full sm:w-auto flex items-center gap-1.5 sm:gap-2 bg-white/95 p-1.5 rounded-xl border border-white shadow-xs text-xs overflow-x-auto">
             <button type="button" @click="filtro = 'pendientes'"
-                class="px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5"
+                class="px-2.5 sm:px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1 shrink-0 text-[11px] sm:text-xs"
                 :class="filtro === 'pendientes' ? 'bg-[#D91B23] text-white' : 'text-slate-600 hover:bg-slate-100'">
                 <i class="ri-time-line"></i>
                 <span>Por Validar ({{ $pendientes->count() }})</span>
             </button>
             <button type="button" @click="filtro = 'validados'"
-                class="px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5"
+                class="px-2.5 sm:px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1 shrink-0 text-[11px] sm:text-xs"
                 :class="filtro === 'validados' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'">
                 <i class="ri-checkbox-circle-line"></i>
-                <span>Validados Hoy ({{ $validados->count() }})</span>
+                <span>Validados ({{ $validados->count() }})</span>
             </button>
             <button type="button" @click="filtro = 'todos'"
-                class="px-3 py-1.5 rounded-lg font-bold transition"
+                class="px-2.5 sm:px-3 py-1.5 rounded-lg font-bold transition shrink-0 text-[11px] sm:text-xs"
                 :class="filtro === 'todos' ? 'bg-[#08142C] text-white' : 'text-slate-600 hover:bg-slate-100'">
                 Todos ({{ $conductores->count() }})
             </button>
@@ -161,7 +161,7 @@
                 </div>
 
                 <!-- Acciones de Aprobación / Rechazo -->
-                <div class="grid grid-cols-2 gap-2">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <form action="{{ route('finanzas.yape.validar') }}" method="POST">
                         @csrf
                         <input type="hidden" name="conductor_id" value="{{ $c->id }}">
